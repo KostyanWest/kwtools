@@ -27,9 +27,9 @@ struct vacancies_base
 
 	alignas(64) std::mutex mutex{}; // may throw
 	std::condition_variable cv{}; // may throw
-	unum awakened = 0;
+	un awakened = 0;
 	bool disposed = false;
-	std::atomic<unum> cur_index = 0;
+	std::atomic<un> cur_index = 0;
 	std::atomic<num> count;
 };
 
@@ -38,8 +38,8 @@ struct vacancies_base<true, false>
 {
 	explicit vacancies_base( num init_count ) noexcept : count( init_count ) {}
 
-	std::atomic<unum> begin_index = 0;
-	std::atomic<unum> end_index = 0;
+	std::atomic<un> begin_index = 0;
+	std::atomic<un> end_index = 0;
 	std::atomic<num> count;
 };
 
@@ -50,9 +50,9 @@ struct vacancies_base<false, true>
 
 	alignas(64) std::mutex mutex{}; // may throw
 	std::condition_variable cv{}; // may throw
-	unum awakened = 0;
+	un awakened = 0;
 	bool disposed = false;
-	unum begin_index = 0;
+	un begin_index = 0;
 	std::atomic<num> count;
 };
 
@@ -61,7 +61,7 @@ struct vacancies_base<false, false>
 {
 	explicit vacancies_base( num init_count ) noexcept : count( init_count ) {}
 
-	unum begin_index = 0;
+	un begin_index = 0;
 	std::atomic<num> count;
 };
 
@@ -149,7 +149,7 @@ public:
 	{
 		if (success)
 		{
-			unum index;
+			un index;
 			do
 			{
 				index = this->cur_index.fetch_add( 1, std::memory_order_relaxed );

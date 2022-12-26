@@ -7,7 +7,7 @@
 
 #include <iostream>
 
-using kwt::unum;
+using kwt::un;
 using kwt::num;
 
 

@@ -89,25 +89,25 @@ inline constexpr wait_tag_t wait_tag{};
 
 
 /*
-Многопоточная очередь, основанная на кольцевом буфере.
+Многопоточная очередь, основанная на кольцевом буфере. 
 
-API:
-`push` - помещает объект в очередь;
-`pop` - извлекает объект из очереди.
+API: 
+`push` - помещает объект в очередь; 
+`pop` - извлекает объект из очереди. 
 
-Префиксы:
-`try` - при наличии - функция возвращает `return_code` и является noexcept,
-если операция помещения/извлечения также является noexept,
-при отсутствии -  функция выбрасывает исключение `(TODO)` в случае неудачи.
+Префиксы: 
+`try` - при наличии - функция возвращает `return_code` и является noexcept, 
+если операция помещения/извлечения также является noexept, 
+при отсутствии -  функция выбрасывает исключение `(TODO)` в случае неудачи. 
 
-Суффиксы:
-`directly` (только для `pop`) - при наличии - функция принимает callback функцию,
-в которую передаётся rvalue ссылка извлекаемого из очереди объекта
-(помогает напрямую переместить объект в другой контенер или выполнить действия над объектом на месте;
-объект не будет извлечён и разрушен, пока не выполнится callback функция - не делайте её долгой).
+Суффиксы: 
+`directly` (только для `pop`) - при наличии - функция принимает callback функцию, 
+в которую передаётся rvalue ссылка извлекаемого из очереди объекта 
+(помогает напрямую переместить объект в другой контенер или выполнить действия над объектом на месте; 
+объект не будет извлечён и разрушен, пока не выполнится callback функция - не делайте её долгой). 
 
-Постфиксы:
-`wait` - при наличии - функция блокирует поток, если очередь пуста/заполнена,
+Постфиксы: 
+`wait` - при наличии - функция блокирует поток, если очередь пуста/заполнена, 
 при отсутствии - функция завершается неудачно, если очередь пуста/заполнена.
 
 @param T - тип объектов, передаваемых через очередь.
@@ -155,7 +155,7 @@ class queue
 			: ptr( queue )
 		{
 			rcode = ptr->pusher.try_acquire(
-				[this]( const unum i ) noexcept { return this->check_cell( i ); }
+				[this]( const un i ) noexcept { return this->check_cell( i ); }
 			);
 		}
 
@@ -166,7 +166,7 @@ class queue
 				"queue<T, C, ...>::[try_]push_wait requires WAITABLE_PUSH to be true.");
 
 			rcode = ptr->pusher.try_acquire_wait(
-				[this]( const unum i ) noexcept { return this->check_cell( i ); }
+				[this]( const un i ) noexcept { return this->check_cell( i ); }
 			);
 		}
 
@@ -184,7 +184,7 @@ class queue
 			return rcode;
 		}
 
-		bool check_cell( const unum i ) noexcept
+		bool check_cell( const un i ) noexcept
 		{
 			index = i;
 			return ptr->buffer[i % C].cmp_xchg_status(
@@ -211,7 +211,7 @@ class queue
 		}
 
 		queue* const ptr;
-		unum index;
+		un index;
 		return_code rcode;
 		bool successed = false;
 	};
@@ -228,7 +228,7 @@ class queue
 			: ptr( queue )
 		{
 			rcode = ptr->popper.try_acquire(
-				[this]( const unum i ) noexcept { return this->check_cell( i ); }
+				[this]( const un i ) noexcept { return this->check_cell( i ); }
 			);
 		}
 
@@ -239,7 +239,7 @@ class queue
 				"queue<T, C, ...>::[try_]pop_wait requires WAITABLE_POP to be true.");
 
 			rcode = ptr->popper.try_acquire_wait(
-				[this]( const unum i ) noexcept { return this->check_cell( i ); }
+				[this]( const un i ) noexcept { return this->check_cell( i ); }
 			);
 		}
 
@@ -252,7 +252,7 @@ class queue
 			other.rcode = return_code::rejected;
 		}
 
-		bool check_cell( const unum i ) noexcept
+		bool check_cell( const un i ) noexcept
 		{
 			index = i;
 			return ptr->buffer[i % C].cmp_xchg_status(
@@ -297,7 +297,7 @@ class queue
 
 	private:
 		queue* const ptr;
-		unum index;
+		un index;
 		return_code rcode;
 	};
 
@@ -447,7 +447,7 @@ public:
 
 	/*
 	НЕ блокирует поток.
-	Объект не будет разрушен и место в очереди не освободится,
+	Объект не будет разрушен и место в очереди не освободится, 
 	пока не выполнится callback функция - не делайте её долгой.
 	@return success - если успешно выполнилась callback функция, rejected - если очередь пуста.
 	@exception перенаправляет исключения, выбрасываемые конструктором перемещения объекта.
@@ -464,7 +464,7 @@ public:
 
 	/*
 	Блокирует поток, если очередь пуста.
-	Объект не будет разрушен и место в очереди не освободится,
+	Объект не будет разрушен и место в очереди не освободится, 
 	пока не выполнится callback функция - не делайте её долгой.
 	@return success - если успешно выполнилась callback функция,
 	rejected - если очередь готовится к разрушению.
@@ -482,7 +482,7 @@ public:
 
 	/*
 	НЕ блокирует поток.
-	Объект не будет разрушен и место в очереди не освободится,
+	Объект не будет разрушен и место в очереди не освободится, 
 	пока не выполнится callback функция - не делайте её долгой.
 	@exception `TODO(rejected)` - если очередь пуста.
 	@exception перенаправляет исключения из callback функции конструктором перемещения объекта.
@@ -498,7 +498,7 @@ public:
 
 	/*
 	Блокирует поток, если очередь пуста.
-	Объект не будет разрушен и место в очереди не освободится,
+	Объект не будет разрушен и место в очереди не освободится, 
 	пока не выполнится callback функция - не делайте её долгой.
 	@exception `TODO(rejected)` - если очередь готовится к разрушению.
 	@exception перенаправляет исключения, выбрасываемые конструктором перемещения объекта.
@@ -513,10 +513,10 @@ public:
 	}
 
 	/*
-	Подготовка к разрушению очереди. После вызова, ожидающие `wait` функции вернут
-	`return_code::rejected` или соответствующее исключение, остальные функции не будут затронуты.
-	С момента вызова функции в очереди не будет появлятся новых мест: вскоре все функции `push`
-	и `pop` будут завершаться ошибкой rejected. Используйте эту функцию для того, чтобы
+	Подготовка к разрушению очереди. После вызова, ожидающие `wait` функции вернут 
+	`return_code::rejected` или соответствующее исключение, остальные функции не будут затронуты. 
+	С момента вызова функции в очереди не будет появлятся новых мест: вскоре все функции `push` 
+	и `pop` будут завершаться ошибкой rejected. Используйте эту функцию для того, чтобы 
 	разблокировать все потоки и прекратить работу с очередью перед её разрушеним.
 
 	@exception noexcept; потокобезопасная.
@@ -533,8 +533,8 @@ public:
 	~queue()
 	{
 		dispose();
-		unum index = 0;
-		auto predicate = [this, &index]( const unum i ) noexcept
+		un index = 0;
+		auto predicate = [this, &index]( const un i ) noexcept
 		{
 			index = i;
 			return this->buffer[i % C].cmp_xchg_status(

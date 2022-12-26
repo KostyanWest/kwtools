@@ -15,11 +15,11 @@ namespace kwt
 {
 
 
-using unum = std::size_t;
-using num = std::make_signed_t<unum>;
+using un = std::size_t;
+using num = std::make_signed_t<un>;
 
 
-inline constexpr unum get_optimal_alignas( const unum size ) noexcept
+inline constexpr un get_optimal_alignas( const un size ) noexcept
 {
 	if (size <= sizeof( void* ))
 		return sizeof( void* );
@@ -34,8 +34,9 @@ inline constexpr unum get_optimal_alignas( const unum size ) noexcept
 }
 
 template<typename T>
-inline constexpr bool is_powerof2( T v )
+inline constexpr bool is_powerof2( T v ) noexcept
 {
+	static_assert(std::is_integral_v<T>, "T must be the integral type");
 	return (v > 0) && ((v & (v - 1)) == 0);
 }
 
@@ -57,6 +58,6 @@ enum class return_code : num
 } // namespace concurrent
 
 
-}
+} // namespace kwt
 
 #endif // !KWTOOLS_STUFF_HPP
