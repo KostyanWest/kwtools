@@ -13,5 +13,9 @@
     <ClInclude Include="$(MSBuildThisFileDirectory)concurrent\queue.hpp">
       <Filter>concurrent</Filter>
     </ClInclude>
+    <ClInclude Include="$(MSBuildThisFileDirectory)concurrent\spinlock.hpp">
+      <Filter>concurrent</Filter>
+    </ClInclude>
+    <ClInclude Include="$(MSBuildThisFileDirectory)flags.hpp" />
   </ItemGroup>
 </Project>

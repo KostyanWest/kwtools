@@ -15,7 +15,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="$(MSBuildThisFileDirectory)concurrent\queue.hpp" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)concurrent\spinlock.hpp" />
     <ClInclude Include="$(MSBuildThisFileDirectory)concurrent\vacancies.hpp" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)flags.hpp" />
     <ClInclude Include="$(MSBuildThisFileDirectory)stuff.hpp" />
   </ItemGroup>
 </Project>
