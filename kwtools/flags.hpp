@@ -15,16 +15,21 @@ namespace kwt
 
 
 template <typename Enum>
-class flags
+struct flags
 {
-public:
-	using enum_type = std::underlying_type_t<Enum>;
+	static_assert(std::is_enum_v<Enum>, "flasg<Enum> requires Enum to be enum.");
+	using enum_type = Enum;
+	using under_type = std::underlying_type_t<Enum>;
 
-	constexpr flags() noexcept : underlying() {}
-	constexpr flags( const Enum e ) noexcept : underlying( static_cast<uint16_t>(e) ) {}
-	constexpr explicit flags( const enum_type v ) noexcept : underlying( v ) {}
+	constexpr explicit flags() noexcept : underlying( 0 ) {}
+	constexpr /*implicit*/ flags( const Enum e ) noexcept : underlying( static_cast<under_type>(e) ) {}
+	constexpr explicit flags( const under_type u ) noexcept : underlying( u ) {}
 
-	constexpr explicit operator enum_type() const noexcept 
+	constexpr /*implicit*/ operator enum_type() const noexcept
+	{
+		return static_cast<enum_type>(underlying);
+	}
+	constexpr explicit operator under_type() const noexcept 
 	{
 		return underlying;
 	}
@@ -54,14 +59,70 @@ public:
 	{
 		return flags( underlying ^ other.underlying );
 	}
-	constexpr flags operator~( const flags& other ) const
+	constexpr flags operator~() const
 	{
-		return flags( underlying ~ other.underlying );
+		return flags( ~underlying );
+	}
+	constexpr bool operator!() const
+	{
+		return !underlying;
 	}
 
-private:
-	enum_type underlying;
+	under_type underlying;
 };
+
+
+template<typename Enum, std::enable_if_t<std::is_enum_v<Enum>, bool> = true>
+constexpr inline flags<Enum> operator&( const Enum left, const Enum right ) noexcept
+{
+	using under_type = std::underlying_type_t<Enum>;
+	return flags<Enum>(static_cast<under_type>(left) & static_cast<under_type>(right));
+}
+
+template<typename Enum, std::enable_if_t<std::is_enum_v<Enum>, bool> = true>
+constexpr inline flags<Enum> operator&( const Enum left, const flags<Enum> right ) noexcept
+{
+	using under_type = std::underlying_type_t<Enum>;
+	return flags<Enum>( static_cast<under_type>(left) & static_cast<under_type>(right) );
+}
+
+
+template<typename Enum, std::enable_if_t<std::is_enum_v<Enum>, bool> = true>
+constexpr inline flags<Enum> operator|( const Enum left, const Enum right ) noexcept
+{
+	using under_type = std::underlying_type_t<Enum>;
+	return flags<Enum>(static_cast<under_type>(left) | static_cast<under_type>(right));
+}
+
+template<typename Enum, std::enable_if_t<std::is_enum_v<Enum>, bool> = true>
+constexpr inline flags<Enum> operator|( const Enum left, const flags<Enum> right ) noexcept
+{
+	using under_type = std::underlying_type_t<Enum>;
+	return flags<Enum>( static_cast<under_type>(left) | static_cast<under_type>(right) );
+}
+
+
+template<typename Enum, std::enable_if_t<std::is_enum_v<Enum>, bool> = true>
+constexpr inline flags<Enum> operator^( const Enum left, const Enum right ) noexcept
+{
+	using under_type = std::underlying_type_t<Enum>;
+	return flags<Enum>(static_cast<under_type>(left) ^ static_cast<under_type>(right));
+}
+
+template<typename Enum, std::enable_if_t<std::is_enum_v<Enum>, bool> = true>
+constexpr inline flags<Enum> operator^( const Enum left, const flags<Enum> right ) noexcept
+{
+	using under_type = std::underlying_type_t<Enum>;
+	return flags<Enum>( static_cast<under_type>(left) ^ static_cast<under_type>(right) );
+}
+
+
+template<typename Enum, std::enable_if_t<std::is_enum_v<Enum>, bool> = true>
+constexpr inline bool operator!( const Enum value ) noexcept
+{
+	using under_type = std::underlying_type_t<Enum>;
+	return !static_cast<under_type>(value);
+}
 
 
 } // namespace kwt
