@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022 KostyanWest
+﻿// Copyright (c) 2022-2023 KostyanWest
 //
 // Distributed under the Boost Software License, Version 1.0.
 // (See LICENSE.txt or http://www.boost.org/LICENSE_1_0.txt)
@@ -8,7 +8,7 @@
 #ifndef KWTOOLS_CONCURRENT_SPINLOCK_HPP
 #define KWTOOLS_CONCURRENT_SPINLOCK_HPP
 
-#include <kwtools/stuff.hpp>
+#include <kwtools/concurrent/defs.hpp>
 
 #include <emmintrin.h>
 
@@ -19,12 +19,13 @@ namespace kwt::concurrent
 
 template<typename ExchangeFunc, typename CheckFunc>
 void spin_until( ExchangeFunc exchange, CheckFunc check )
+	noexcept(noexcept(exchange()) && noexcept(check()))
 {
 	num mask = 1;
-	const num max = 64;
-	while (exchange())
+	constexpr num max = 64;
+	while (!exchange())
 	{
-		while (check())
+		while (!check())
 		{
 			for (int i = mask; i; --i)
 			{
@@ -32,6 +33,22 @@ void spin_until( ExchangeFunc exchange, CheckFunc check )
 			}
 			mask = mask < max ? mask << 1 : max;
 		}
+	}
+}
+
+template<typename CheckFunc>
+void spin_until( CheckFunc check )
+	noexcept(noexcept(check()))
+{
+	num mask = 1;
+	constexpr num max = 64;
+	while (!check())
+	{
+		for (int i = mask; i; --i)
+		{
+			_mm_pause();
+		}
+		mask = mask < max ? mask << 1 : max;
 	}
 }
 

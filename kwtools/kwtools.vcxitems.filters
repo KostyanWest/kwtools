@@ -9,7 +9,7 @@
     <ClInclude Include="$(MSBuildThisFileDirectory)concurrent\vacancies.hpp">
       <Filter>concurrent</Filter>
     </ClInclude>
-    <ClInclude Include="$(MSBuildThisFileDirectory)stuff.hpp" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)defs.hpp" />
     <ClInclude Include="$(MSBuildThisFileDirectory)concurrent\queue.hpp">
       <Filter>concurrent</Filter>
     </ClInclude>
@@ -17,5 +17,8 @@
       <Filter>concurrent</Filter>
     </ClInclude>
     <ClInclude Include="$(MSBuildThisFileDirectory)flags.hpp" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)concurrent\defs.hpp">
+      <Filter>concurrent</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

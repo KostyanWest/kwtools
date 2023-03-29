@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2022 KostyanWest
+﻿// Copyright (c) 2022-2023 KostyanWest
 //
 // Distributed under the Boost Software License, Version 1.0.
 // (See LICENSE.txt or http://www.boost.org/LICENSE_1_0.txt)
@@ -20,7 +20,7 @@ namespace detail
 {
 
 
-enum class cell_status : unsigned char
+enum class cell_status : uint8_t
 {
 	clear,
 	building,
