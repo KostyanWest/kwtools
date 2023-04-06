@@ -14,23 +14,20 @@ namespace kwt
 {
 
 
-template<class, class = void>
+template<typename, typename = void>
 struct has_flags_member : std::false_type {};
 
-template<class T>
+template<typename T>
 struct has_flags_member<T, std::void_t<decltype(T::kwt_flags)>> : std::true_type {};
 
-//template<class T>
-//inline constexpr bool has_flags_member_v = std::is_same_v<T, decltype(T::kwt_flags)>;
-
-template<class T>
+template<typename T>
 inline constexpr bool has_flags_member_v = has_flags_member<T>::value;
 
 
 template<typename Enum>
 struct flags
 {
-	static_assert(has_flags_member_v<Enum>, "flasg<Enum> requires Enum to has a kwt_flags member.");
+	static_assert(has_flags_member_v<Enum>, "flags<Enum> requires Enum to has a kwt_flags member.");
 	using enum_type = Enum;
 	using under_type = std::underlying_type_t<Enum>;
 
@@ -46,37 +43,37 @@ struct flags
 	{
 		return underlying;
 	}
-	constexpr /*implicit*/ operator bool() const noexcept
+	constexpr explicit operator bool() const noexcept
 	{
 		return bool( underlying );
 	}
 
-	constexpr bool operator==( const flags& other ) const
+	constexpr bool operator==( const flags& other ) const noexcept
 	{
 		return underlying == other.underlying;
 	}
-	constexpr bool operator!=( const flags& other ) const
+	constexpr bool operator!=( const flags& other ) const noexcept
 	{
 		return underlying != other.underlying;
 	}
 
-	constexpr flags operator&( const flags& other ) const
+	constexpr flags operator&( const flags& other ) const noexcept
 	{
 		return flags( underlying & other.underlying );
 	}
-	constexpr flags operator|( const flags& other ) const
+	constexpr flags operator|( const flags& other ) const noexcept
 	{
 		return flags( underlying | other.underlying );
 	}
-	constexpr flags operator^( const flags& other ) const
+	constexpr flags operator^( const flags& other ) const noexcept
 	{
 		return flags( underlying ^ other.underlying );
 	}
-	constexpr flags operator~() const
+	constexpr flags operator~() const noexcept
 	{
 		return flags( ~underlying );
 	}
-	constexpr bool operator!() const
+	constexpr bool operator!() const noexcept
 	{
 		return !underlying;
 	}
@@ -86,14 +83,14 @@ struct flags
 
 
 template<typename Enum, std::enable_if_t<has_flags_member_v<Enum>, bool> = true>
-constexpr inline flags<Enum> operator&( const Enum left, const Enum right ) noexcept
+inline constexpr flags<Enum> operator&( const Enum left, const Enum right ) noexcept
 {
 	using under_type = std::underlying_type_t<Enum>;
 	return flags<Enum>( static_cast<under_type>(left) & static_cast<under_type>(right) );
 }
 
 template<typename Enum, std::enable_if_t<has_flags_member_v<Enum>, bool> = true>
-constexpr inline flags<Enum> operator&( const Enum left, const flags<Enum> right ) noexcept
+inline constexpr flags<Enum> operator&( const Enum left, const flags<Enum> right ) noexcept
 {
 	using under_type = std::underlying_type_t<Enum>;
 	return flags<Enum>( static_cast<under_type>(left) & static_cast<under_type>(right) );
@@ -101,14 +98,14 @@ constexpr inline flags<Enum> operator&( const Enum left, const flags<Enum> right
 
 
 template<typename Enum, std::enable_if_t<has_flags_member_v<Enum>, bool> = true>
-constexpr inline flags<Enum> operator|( const Enum left, const Enum right ) noexcept
+inline constexpr flags<Enum> operator|( const Enum left, const Enum right ) noexcept
 {
 	using under_type = std::underlying_type_t<Enum>;
 	return flags<Enum>(static_cast<under_type>(left) | static_cast<under_type>(right));
 }
 
 template<typename Enum, std::enable_if_t<has_flags_member_v<Enum>, bool> = true>
-constexpr inline flags<Enum> operator|( const Enum left, const flags<Enum> right ) noexcept
+inline constexpr flags<Enum> operator|( const Enum left, const flags<Enum> right ) noexcept
 {
 	using under_type = std::underlying_type_t<Enum>;
 	return flags<Enum>( static_cast<under_type>(left) | static_cast<under_type>(right) );
@@ -116,14 +113,14 @@ constexpr inline flags<Enum> operator|( const Enum left, const flags<Enum> right
 
 
 template<typename Enum, std::enable_if_t<has_flags_member_v<Enum>, bool> = true>
-constexpr inline flags<Enum> operator^( const Enum left, const Enum right ) noexcept
+inline constexpr flags<Enum> operator^( const Enum left, const Enum right ) noexcept
 {
 	using under_type = std::underlying_type_t<Enum>;
 	return flags<Enum>(static_cast<under_type>(left) ^ static_cast<under_type>(right));
 }
 
 template<typename Enum, std::enable_if_t<has_flags_member_v<Enum>, bool> = true>
-constexpr inline flags<Enum> operator^( const Enum left, const flags<Enum> right ) noexcept
+inline constexpr flags<Enum> operator^( const Enum left, const flags<Enum> right ) noexcept
 {
 	using under_type = std::underlying_type_t<Enum>;
 	return flags<Enum>( static_cast<under_type>(left) ^ static_cast<under_type>(right) );
@@ -131,7 +128,7 @@ constexpr inline flags<Enum> operator^( const Enum left, const flags<Enum> right
 
 
 template<typename Enum, std::enable_if_t<has_flags_member_v<Enum>, bool> = true>
-constexpr inline bool operator!( const Enum value ) noexcept
+inline constexpr bool operator!( const Enum value ) noexcept
 {
 	using under_type = std::underlying_type_t<Enum>;
 	return !static_cast<under_type>(value);

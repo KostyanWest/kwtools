@@ -21,4 +21,7 @@
     <ClInclude Include="$(MSBuildThisFileDirectory)flags.hpp" />
     <ClInclude Include="$(MSBuildThisFileDirectory)defs.hpp" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)cpp.hint" />
+  </ItemGroup>
 </Project>

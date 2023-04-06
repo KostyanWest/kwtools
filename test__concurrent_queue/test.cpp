@@ -4,6 +4,7 @@
 // (See LICENSE.txt or http://www.boost.org/LICENSE_1_0.txt)
 
 #include <kwtools/concurrent/vacancies.hpp>
+//#include <atomic_queue/atomic_queue.h>
 
 #include <iostream>
 #include <iomanip>
@@ -20,158 +21,163 @@ namespace // <unnamed>
 
 
 using flags = kwt::concurrent::vacancies_flags;
-constexpr flags f0 = static_cast<flags>(0);
-constexpr flags f1 = static_cast<flags>(1);
-constexpr flags f2 = static_cast<flags>(2);
-constexpr flags f3 = static_cast<flags>(3);
-constexpr flags f4 = static_cast<flags>(4);
-constexpr flags f5 = static_cast<flags>(5);
-constexpr flags f6 = static_cast<flags>(6);
-constexpr flags f7 = static_cast<flags>(7);
+using clock = std::chrono::steady_clock;
+using time_point = std::chrono::time_point<clock>;
+
+inline constexpr kwt::flags<flags> _ = flags::none;
+inline constexpr kwt::flags<flags> S = flags::single_client;
+inline constexpr kwt::flags<flags> W = flags::waitable_client;
+inline constexpr kwt::flags<flags> C = flags::cache_optimised;
+
+template<flags F>
+inline constexpr char flags_to_str[] = {
+		' ', ' ', ' ',
+		((S & F) ? 'S' : ' '),
+		((W & F) ? 'W' : ' '),
+		((C & F) ? 'C' : ' '),
+		'\0'
+};
+
+inline constexpr flags ___ = _ | _ | _;
+inline constexpr flags S__ = S | _ | _;
+inline constexpr flags _W_ = _ | W | _;
+inline constexpr flags SW_ = S | W | _;
+inline constexpr flags __C = _ | _ | C;
+inline constexpr flags S_C = S | _ | C;
+inline constexpr flags _WC = _ | W | C;
+inline constexpr flags SWC = S | W | C;
 
 
-using steady_clock = std::chrono::steady_clock;
-using time_point = std::chrono::time_point<steady_clock>;
-
-struct test_data
+enum class test_strategy
 {
-	explicit test_data( const num total_thread_count ) noexcept
+	none,
+	try_until,
+	spin_until,
+	wait
+};
+
+inline constexpr test_strategy ts_none = test_strategy::none;
+inline constexpr test_strategy ts_try = test_strategy::try_until;
+inline constexpr test_strategy ts_spin = test_strategy::spin_until;
+inline constexpr test_strategy ts_wait = test_strategy::wait;
+
+template<test_strategy TS>
+inline constexpr const char* ts_to_str =
+	(TS == ts_none) ? "  none" :
+	(TS == ts_try)  ? "   try" :
+	(TS == ts_spin) ? "  spin" :
+	(TS == ts_wait) ? "  wait" :
+	"   wtf";
+
+
+struct test_info
+{
+	explicit test_info( const num total_thread_count ) noexcept
 		: thread_ready_counter( total_thread_count )
 		, thread_finish_counter( total_thread_count )
 	{
 	}
 
+	void get_ready() noexcept
+	{
+		if (thread_ready_counter.fetch_add( -1, std::memory_order_relaxed ) > 1)
+		{
+			auto& counter = thread_ready_counter;
+			kwt::concurrent::spin_until(
+				[&counter]() noexcept { return counter.load( std::memory_order_relaxed ) <= 0; }
+			);
+		}
+		else
+		{
+			tp_start = clock::now();
+		}
+	}
+
+	void get_finish() noexcept
+	{
+		if (thread_finish_counter.fetch_add( -1, std::memory_order_relaxed ) <= 1)
+		{
+			tp_end = clock::now();
+		}
+	}
+
 	std::atomic<num> thread_ready_counter;
 	std::atomic<num> thread_finish_counter;
-	std::string type{ 6, ' ' };
 	time_point tp_start{};
 	time_point tp_end{};
 };
 
 
-void get_ready( test_data* const p_data ) noexcept
-{
-	auto& counter = p_data->thread_ready_counter;
-	if (counter.fetch_add( -1, std::memory_order_relaxed ) > 1)
-	{
-		kwt::concurrent::spin_until(
-			[&counter]() noexcept { return counter.load( std::memory_order_relaxed ) <= 0; }
-		);
-	}
-	else
-	{
-		p_data->tp_start = steady_clock::now();
-	}
-}
-
-void get_finish( test_data* const p_data ) noexcept
-{
-	auto& counter = p_data->thread_finish_counter;
-	if (counter.fetch_add( -1, std::memory_order_relaxed ) <= 1)
-	{
-		p_data->tp_end = steady_clock::now();
-	}
-}
-
-
-template<kwt::concurrent::vacancies_flags FLAGS>
-void thread_routine_none(
-	kwt::concurrent::vacancies<FLAGS>* const p_vacancies1,
-	kwt::concurrent::vacancies<FLAGS>* const p_vacancies2,
-	test_data* const                         p_data,
-	un const                                 count
+template<test_strategy TS, flags F1, flags F2>
+void thread_routine (
+	kwt::concurrent::vacancies<F1>* p_vacancies1,
+	kwt::concurrent::vacancies<F2>* p_vacancies2,
+	test_info*                      p_info,
+	un const                        count
 )
 {
-	get_ready( p_data );
-	volatile un index = 0;
-	for (un i = count; i > 0; --i)
-	{
-		index += 1;
-	}
-	get_finish( p_data );
-}
-
-template<kwt::concurrent::vacancies_flags FLAGS>
-void thread_routine_try(
-	kwt::concurrent::vacancies<FLAGS>* const p_vacancies1,
-	kwt::concurrent::vacancies<FLAGS>* const p_vacancies2,
-	test_data* const                         p_data,
-	un const                                 count
-)
-{
-	get_ready( p_data );
+	p_info->get_ready();
+	volatile un index_vol = 0; // for "none" strategy only
 	un index = 0;
 	for (un i = count; i > 0; --i)
 	{
-		kwt::concurrent::spin_until(
-			[p_vacancies1, &index]() noexcept
-			{
-				return p_vacancies1->try_acquire( &index ) == kwt::concurrent::return_code::success;
-			}
-		);
-		p_vacancies2->add();
+		if constexpr (TS == ts_none)
+		{
+			index_vol += 1;
+		}
+		else if constexpr (TS == ts_try)
+		{
+			kwt::concurrent::spin_until(
+				[p_vacancies1, &index]() noexcept
+				{
+					return p_vacancies1->try_acquire( &index ) == kwt::concurrent::return_code::success;
+				}
+			);
+			p_vacancies2->add();
+		}
+		else if constexpr (TS == ts_spin)
+		{
+			[[maybe_unused]] auto code = p_vacancies1->try_acquire_spin( &index );
+			p_vacancies2->add();
+		}
+		else if constexpr (TS == ts_wait)
+		{
+			[[maybe_unused]] auto code = p_vacancies1->try_acquire_wait( &index );
+			p_vacancies2->add();
+		}
+		else
+		{
+			static_assert((int)TS && false, "wtf?");
+		}
 	}
-	get_finish( p_data );
-}
-
-template<kwt::concurrent::vacancies_flags FLAGS>
-void thread_routine_spin(
-	kwt::concurrent::vacancies<FLAGS>* const p_vacancies1,
-	kwt::concurrent::vacancies<FLAGS>* const p_vacancies2,
-	test_data* const                         p_data,
-	un const                                 count
-)
-{
-	get_ready( p_data );
-	un index = 0;
-	for (un i = count; i > 0; --i)
-	{
-		auto code = p_vacancies1->try_acquire_spin( &index );
-		p_vacancies2->add();
-	}
-	get_finish( p_data );
-}
-
-template<kwt::concurrent::vacancies_flags FLAGS>
-void thread_routine_wait(
-	kwt::concurrent::vacancies<FLAGS>* const p_vacancies1,
-	kwt::concurrent::vacancies<FLAGS>* const p_vacancies2,
-	test_data* const                         p_data,
-	un const                                 count
-)
-{
-	get_ready( p_data );
-	un index = 0;
-	for (un i = count; i > 0; --i)
-	{
-		auto code = p_vacancies1->try_acquire_wait( &index );
-		p_vacancies2->add();
-	}
-	get_finish( p_data );
+	p_info->get_finish();
 }
 
 
-template<kwt::concurrent::vacancies_flags FLAGS>
+template<test_strategy TS, flags F1, flags F2 = F1>
 void begin_test(
-	num const push_thread_count,
-	num const pop_thread_count,
-	num const vacancies_count,
-	void (*const routine)(kwt::concurrent::vacancies<FLAGS>*, kwt::concurrent::vacancies<FLAGS>*, test_data*, un),
-	const char* const type_str
+	un const push_thread_count,
+	un const pop_thread_count,
+	un const vacancies_count,
+	un const total_count
 )
 {
-	num const total_thread_count = push_thread_count + pop_thread_count;
-	using vacancies_t = kwt::concurrent::vacancies<FLAGS>;
-	auto p_vacancies1 = std::make_unique<vacancies_t>( vacancies_count );
-	auto p_vacancies2 = std::make_unique<vacancies_t>( 0 );
-	auto p_data = std::make_unique<test_data>( total_thread_count );
+	un const total_thread_count = push_thread_count + pop_thread_count;
+	un const per_push_count = total_count / push_thread_count;
+	un const per_pop_count = total_count / pop_thread_count;
+
+	using vacancies_t1 = kwt::concurrent::vacancies<F1>;
+	using vacancies_t2 = kwt::concurrent::vacancies<F2>;
+	auto p_vacancies1 = std::make_unique<vacancies_t1>( vacancies_count );
+	auto p_vacancies2 = std::make_unique<vacancies_t2>( 0 );
+	auto p_info = std::make_unique<test_info>( total_thread_count );
 
 	std::vector<std::thread> push_threads( push_thread_count );
 	std::vector<std::thread> pop_threads( pop_thread_count );
 	for (auto& thread : push_threads)
-		thread = std::thread( routine, p_vacancies1.get(), p_vacancies2.get(), p_data.get(), 10'000'000 / push_thread_count );
+		thread = std::thread( thread_routine<TS, F1, F2>, p_vacancies1.get(), p_vacancies2.get(), p_info.get(), per_push_count );
 	for (auto& thread : pop_threads)
-		thread = std::thread( routine, p_vacancies2.get(), p_vacancies1.get(), p_data.get(), 10'000'000 / pop_thread_count );
+		thread = std::thread( thread_routine<TS, F2, F1>, p_vacancies2.get(), p_vacancies1.get(), p_info.get(), per_pop_count );
 	for (auto& thread : push_threads)
 		thread.join();
 	for (auto& thread : pop_threads)
@@ -188,26 +194,23 @@ void begin_test(
 	bool success =
 		(check_count1 == vacancies_count) &&
 		(check_code1 == kwt::concurrent::return_code::success) &&
-		(check_index1 == push_thread_count * (10'000'000 / push_thread_count)) &&
+		(check_index1 == push_thread_count * per_push_count) &&
 		(check_count2 == 0) &&
 		(check_code2 == kwt::concurrent::return_code::success) &&
-		(check_index2 == pop_thread_count * (10'000'000 / pop_thread_count));
+		(check_index2 == pop_thread_count * per_pop_count);
 
-	constexpr kwt::flags<kwt::concurrent::vacancies_flags> _FLAGS = FLAGS;
-	constexpr char flags_str[] = {
-		' ', ' ', ' ',
-		((_FLAGS & kwt::concurrent::vacancies_flags::single_client) ? 'S' : ' '),
-		((_FLAGS & kwt::concurrent::vacancies_flags::waitable_client) ? 'W' : ' '),
-		((_FLAGS & kwt::concurrent::vacancies_flags::cache_optimised) ? 'C' : ' '),
-		'\0'
-	};
-	num time = std::chrono::duration_cast<std::chrono::milliseconds>(p_data->tp_end - p_data->tp_start).count();
+	auto time = std::chrono::duration_cast<std::chrono::milliseconds>(p_info->tp_end - p_info->tp_start).count();
+
 	std::cout
 		<< std::setw( 6 ) << push_thread_count
 		<< std::setw( 6 ) << pop_thread_count
-		<< flags_str << type_str
+		<< ts_to_str<TS>
+		<< flags_to_str<F1>
+		<< flags_to_str<F2>
+		<< std::setw( 6 ) << vacancies_count
 		<< std::setw( 6 ) << time
-		<< std::setw( 9 ) << ((success) ? "SUCCESS" : "FAIL") << std::endl;
+		<< ((success) ? " SUCCESS" : "    FAIL")
+		<< std::endl;
 }
 
 
@@ -216,49 +219,104 @@ void begin_test(
 
 int main()
 {
-	const num vacancies_count = 500;
-	std::cout << "  Push   Pop Flags  Type  Time" << std::endl;
+	std::cout << __FILE__ " STARTED " << sizeof(std::mutex) << std::endl;
 
-	begin_test<f0>( 1, 1, vacancies_count, thread_routine_none<f0>, "  none" );
+	const un total_count = 10'000'000;
+	const un vacancies_count = 500;
+	std::cout << "  Push   Pop  Type Flags Flags  Size  Time  Status" << std::endl;
 
-	begin_test<f0>( 1, 1, vacancies_count, thread_routine_try<f0>, "   try" );
-	begin_test<f1>( 1, 1, vacancies_count, thread_routine_try<f1>, "   try" );
-	begin_test<f2>( 1, 1, vacancies_count, thread_routine_try<f2>, "   try" );
-	begin_test<f3>( 1, 1, vacancies_count, thread_routine_try<f3>, "   try" );
-	begin_test<f4>( 1, 1, vacancies_count, thread_routine_try<f4>, "   try" );
-	begin_test<f5>( 1, 1, vacancies_count, thread_routine_try<f5>, "   try" );
-	begin_test<f6>( 1, 1, vacancies_count, thread_routine_try<f6>, "   try" );
-	begin_test<f7>( 1, 1, vacancies_count, thread_routine_try<f7>, "   try" );
+	begin_test<ts_none, ___>( 1, 1, vacancies_count, total_count );
+	begin_test<ts_none, ___>( 2, 2, vacancies_count, total_count );
 
-	begin_test<f0>( 1, 1, vacancies_count, thread_routine_spin<f0>, "  spin" );
-	begin_test<f1>( 1, 1, vacancies_count, thread_routine_spin<f1>, "  spin" );
-	begin_test<f2>( 1, 1, vacancies_count, thread_routine_spin<f2>, "  spin" );
-	begin_test<f3>( 1, 1, vacancies_count, thread_routine_spin<f3>, "  spin" );
-	begin_test<f4>( 1, 1, vacancies_count, thread_routine_spin<f4>, "  spin" );
-	begin_test<f5>( 1, 1, vacancies_count, thread_routine_spin<f5>, "  spin" );
-	begin_test<f6>( 1, 1, vacancies_count, thread_routine_spin<f6>, "  spin" );
-	begin_test<f7>( 1, 1, vacancies_count, thread_routine_spin<f7>, "  spin" );
+	begin_test<ts_try, ___>( 1, 1, vacancies_count, total_count );
+	begin_test<ts_try, S__>( 1, 1, vacancies_count, total_count );
+	begin_test<ts_try, _W_>( 1, 1, vacancies_count, total_count );
+	begin_test<ts_try, SW_>( 1, 1, vacancies_count, total_count );
+	begin_test<ts_try, __C>( 1, 1, vacancies_count, total_count );
+	begin_test<ts_try, S_C>( 1, 1, vacancies_count, total_count );
+	begin_test<ts_try, _WC>( 1, 1, vacancies_count, total_count );
+	begin_test<ts_try, SWC>( 1, 1, vacancies_count, total_count );
 
-	begin_test<f2>( 1, 1, vacancies_count, thread_routine_wait<f2>, "  wait" );
-	begin_test<f3>( 1, 1, vacancies_count, thread_routine_wait<f3>, "  wait" );
-	begin_test<f6>( 1, 1, vacancies_count, thread_routine_wait<f6>, "  wait" );
-	begin_test<f7>( 1, 1, vacancies_count, thread_routine_wait<f7>, "  wait" );
+	begin_test<ts_spin, ___>( 1, 1, vacancies_count, total_count );
+	begin_test<ts_spin, S__>( 1, 1, vacancies_count, total_count );
+	begin_test<ts_spin, _W_>( 1, 1, vacancies_count, total_count );
+	begin_test<ts_spin, SW_>( 1, 1, vacancies_count, total_count );
+	begin_test<ts_spin, __C>( 1, 1, vacancies_count, total_count );
+	begin_test<ts_spin, S_C>( 1, 1, vacancies_count, total_count );
+	begin_test<ts_spin, _WC>( 1, 1, vacancies_count, total_count );
+	begin_test<ts_spin, SWC>( 1, 1, vacancies_count, total_count );
 
-	begin_test<f0>( 2, 2, vacancies_count, thread_routine_try<f0>, "   try" );
-	begin_test<f2>( 2, 2, vacancies_count, thread_routine_try<f2>, "   try" );
-	begin_test<f4>( 2, 2, vacancies_count, thread_routine_try<f4>, "   try" );
-	begin_test<f6>( 2, 2, vacancies_count, thread_routine_try<f6>, "   try" );
+	begin_test<ts_wait, _W_>( 1, 1, vacancies_count, total_count );
+	begin_test<ts_wait, SW_>( 1, 1, vacancies_count, total_count );
+	begin_test<ts_wait, _WC>( 1, 1, vacancies_count, total_count );
+	begin_test<ts_wait, SWC>( 1, 1, vacancies_count, total_count );
 
-	begin_test<f0>( 2, 2, vacancies_count, thread_routine_spin<f0>, "  spin" );
-	begin_test<f2>( 2, 2, vacancies_count, thread_routine_spin<f2>, "  spin" );
-	begin_test<f4>( 2, 2, vacancies_count, thread_routine_spin<f4>, "  spin" );
-	begin_test<f6>( 2, 2, vacancies_count, thread_routine_spin<f6>, "  spin" );
+	begin_test<ts_try, ___>( 2, 2, vacancies_count, total_count );
+	begin_test<ts_try, _W_>( 2, 2, vacancies_count, total_count );
+	begin_test<ts_try, __C>( 2, 2, vacancies_count, total_count );
+	begin_test<ts_try, _WC>( 2, 2, vacancies_count, total_count );
 
-	begin_test<f2>( 2, 2, vacancies_count, thread_routine_wait<f2>, "  wait" );
-	begin_test<f6>( 2, 2, vacancies_count, thread_routine_wait<f6>, "  wait" );
+	begin_test<ts_spin, ___>( 2, 2, vacancies_count, total_count );
+	begin_test<ts_spin, _W_>( 2, 2, vacancies_count, total_count );
+	begin_test<ts_spin, __C>( 2, 2, vacancies_count, total_count );
+	begin_test<ts_spin, _WC>( 2, 2, vacancies_count, total_count );
 
-	begin_test<f2>( 5, 5, vacancies_count, thread_routine_wait<f2>, "  wait" );
-	begin_test<f6>( 5, 5, vacancies_count, thread_routine_wait<f6>, "  wait" );
+	begin_test<ts_wait, _W_>( 2, 2, vacancies_count, total_count );
+	begin_test<ts_wait, _WC>( 2, 2, vacancies_count, total_count );
+
+	begin_test<ts_try, ___>( 5, 5, vacancies_count, total_count );
+	begin_test<ts_try, _W_>( 5, 5, vacancies_count, total_count );
+	begin_test<ts_try, __C>( 5, 5, vacancies_count, total_count );
+	begin_test<ts_try, _WC>( 5, 5, vacancies_count, total_count );
+
+	begin_test<ts_spin, ___>( 5, 5, vacancies_count, total_count );
+	begin_test<ts_spin, _W_>( 5, 5, vacancies_count, total_count );
+	begin_test<ts_spin, __C>( 5, 5, vacancies_count, total_count );
+	begin_test<ts_spin, _WC>( 5, 5, vacancies_count, total_count );
+
+	begin_test<ts_wait, _W_>( 5, 5, vacancies_count, total_count );
+	begin_test<ts_wait, _WC>( 5, 5, vacancies_count, total_count );
+
+
+	begin_test<ts_try, S__, ___>( 1, 2, vacancies_count, total_count );
+	begin_test<ts_try, SW_, _W_>( 1, 2, vacancies_count, total_count );
+	begin_test<ts_try, S_C, __C>( 1, 2, vacancies_count, total_count );
+	begin_test<ts_try, SWC, _WC>( 1, 2, vacancies_count, total_count );
+
+	begin_test<ts_spin, S__, ___>( 1, 2, vacancies_count, total_count );
+	begin_test<ts_spin, SW_, _W_>( 1, 2, vacancies_count, total_count );
+	begin_test<ts_spin, S_C, __C>( 1, 2, vacancies_count, total_count );
+	begin_test<ts_spin, SWC, _WC>( 1, 2, vacancies_count, total_count );
+
+	begin_test<ts_wait, SW_, _W_>( 1, 2, vacancies_count, total_count );
+	begin_test<ts_wait, SWC, _WC>( 1, 2, vacancies_count, total_count );
+
+	begin_test<ts_try, S__, ___>( 1, 5, vacancies_count, total_count );
+	begin_test<ts_try, SW_, _W_>( 1, 5, vacancies_count, total_count );
+	begin_test<ts_try, S_C, __C>( 1, 5, vacancies_count, total_count );
+	begin_test<ts_try, SWC, _WC>( 1, 5, vacancies_count, total_count );
+
+	begin_test<ts_spin, S__, ___>( 1, 5, vacancies_count, total_count );
+	begin_test<ts_spin, SW_, _W_>( 1, 5, vacancies_count, total_count );
+	begin_test<ts_spin, S_C, __C>( 1, 5, vacancies_count, total_count );
+	begin_test<ts_spin, SWC, _WC>( 1, 5, vacancies_count, total_count );
+
+	begin_test<ts_wait, SW_, _W_>( 1, 5, vacancies_count, total_count );
+	begin_test<ts_wait, SWC, _WC>( 1, 5, vacancies_count, total_count );
+
+
+	begin_test<ts_try, S__, ___>( 1, 8, vacancies_count, total_count );
+	begin_test<ts_try, SW_, _W_>( 1, 8, vacancies_count, total_count );
+	begin_test<ts_try, S_C, __C>( 1, 8, vacancies_count, total_count );
+	begin_test<ts_try, SWC, _WC>( 1, 8, vacancies_count, total_count );
+
+	begin_test<ts_spin, S__, ___>( 1, 8, vacancies_count, total_count );
+	begin_test<ts_spin, SW_, _W_>( 1, 8, vacancies_count, total_count );
+	begin_test<ts_spin, S_C, __C>( 1, 8, vacancies_count, total_count );
+	begin_test<ts_spin, SWC, _WC>( 1, 8, vacancies_count, total_count );
+
+	begin_test<ts_wait, SW_, _W_>( 1, 8, vacancies_count, total_count );
+	begin_test<ts_wait, SWC, _WC>( 1, 8, vacancies_count, total_count );
 
 	std::cout << __FILE__ " FINISHED" << std::endl;
 	return 0;

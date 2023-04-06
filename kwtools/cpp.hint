@@ -1,0 +1,6 @@
+// Файлы указаний помогают среде IDE Visual Studio интерпретировать идентификаторы Visual C++
+// (например, имена функций и макросов).
+// Дополнительные сведения: https://go.microsoft.com/fwlink/?linkid=865984
+#define KWTOOLS_ASSUME_NEVER_THROWS
+#define KWTOOLS_ASSUME_NEVER_THROWS_WHEN(x)
+#define KWTOOLS_ASSUME_NOEXCEPT(x)

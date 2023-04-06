@@ -35,16 +35,16 @@ namespace detail
 template<bool IS_WAITABLE_CLIENT>
 struct vacancies_employer_side
 {
-	explicit vacancies_employer_side( const num init_count )
+	explicit vacancies_employer_side( const num init_count ) KWTOOLS_ASSUME_NEVER_THROWS
 		: count( init_count )
 	{
 	}
 
-	std::atomic<num>        count;
-	std::mutex              mutex{}; // not noexcept
-	num                     awakened = 0;
-	std::condition_variable cv{}; // not noexcept
-	std::atomic<bool>       disposed = false;
+	mutable std::atomic<num> count;
+	std::mutex               mutex{};
+	num                      awakened = 0;
+	std::condition_variable  cv{}; // assume never throws
+	std::atomic<bool>        disposed = false;
 };
 
 template<>
@@ -55,7 +55,7 @@ struct vacancies_employer_side<false>
 	{
 	}
 
-	std::atomic<num> count;
+	mutable std::atomic<num> count;
 };
 
 
@@ -67,9 +67,9 @@ struct vacancies_client_side
 	{
 	}
 
-	num old_count;
-	num cached_count;
-	un  cur_index = 0;
+	mutable num old_count;
+	mutable num cached_count;
+	un          cur_index = 0;
 };
 
 template<>
@@ -114,7 +114,8 @@ public:
 	// Максимальный размер буффера вакансий
 	static constexpr num max_index = std::numeric_limits<un>::max();
 
-	explicit vacancies( const num init_count ) noexcept(!(FLAGS & vacancies_flags::waitable_client))
+	explicit vacancies( const num init_count )
+		KWTOOLS_ASSUME_NOEXCEPT(!(FLAGS & vacancies_flags::waitable_client))
 		: ems( init_count ), cls( init_count )
 	{
 	}
@@ -122,7 +123,7 @@ public:
 	vacancies( const vacancies& ) = delete;
 	vacancies& operator= ( const vacancies& ) = delete;
 
-	void add() noexcept(!(FLAGS & vacancies_flags::waitable_client))
+	void add() KWTOOLS_ASSUME_NOEXCEPT(!(FLAGS & vacancies_flags::waitable_client))
 	{
 		num old_count = ems.count.fetch_add( 1, std::memory_order_release );
 		if constexpr (FLAGS & vacancies_flags::waitable_client)
@@ -130,7 +131,7 @@ public:
 			if (old_count < 0)
 			{
 				{
-					std::unique_lock<std::mutex> lock( ems.mutex ); // not noexcept
+					std::unique_lock<std::mutex> lock( ems.mutex ); // assume never throws
 					ems.awakened++;
 				}
 				ems.cv.notify_one();
@@ -138,7 +139,7 @@ public:
 		}
 	}
 
-	void add_bunch( const num add_count ) noexcept(!(FLAGS& vacancies_flags::waitable_client))
+	void add_bunch( const num add_count ) KWTOOLS_ASSUME_NOEXCEPT(!(FLAGS& vacancies_flags::waitable_client))
 	{
 		num old_count = ems.count.fetch_add( add_count, std::memory_order_release );
 		if constexpr (FLAGS & vacancies_flags::waitable_client)
@@ -147,7 +148,7 @@ public:
 			{
 				num num_to_wakeup = std::min( -old_count, add_count );
 				{
-					std::unique_lock<std::mutex> lock( ems.mutex ); // not noexcept
+					std::unique_lock<std::mutex> lock( ems.mutex ); // assume never throws
 					ems.awakened += num_to_wakeup;
 				}
 				ems.cv.notify_all();
@@ -169,9 +170,30 @@ public:
 		}
 		else
 		{
-			num c = ems.count.load( std::memory_order_relaxed );
-			while (c > 0 && !ems.count.compare_exchange_weak( c, c - 1, std::memory_order_acquire ));
-			return (c > 0) ? acquire( p_index_out ) : return_code::rejected;
+			if constexpr (FLAGS & vacancies_flags::waitable_client)
+			{
+				num c = ems.count.load( std::memory_order_relaxed );
+				while (c > 0 && !ems.count.compare_exchange_weak( c, c - 1, std::memory_order_acquire ));
+				return (c > 0) ? acquire( p_index_out ) : return_code::rejected;
+			}
+			else
+			{
+				/*num old_count = ems.count.fetch_add( -1, std::memory_order_acquire );
+				if (old_count > 0)
+				{
+					return acquire( p_index_out );
+				}
+				else
+				{
+					ems.count.fetch_add( 1, std::memory_order_relaxed );
+					return return_code::rejected;;
+				}*/
+				num old_count;
+				while (
+					(old_count = ems.count.fetch_add( -1, std::memory_order_acquire )) <= 0 &&
+					(old_count = ems.count.fetch_add( 1, std::memory_order_relaxed )) >= 0);
+				return (old_count > 0) ? acquire( p_index_out ) : return_code::rejected;
+			}
 		}
 	}
 
@@ -200,24 +222,54 @@ public:
 		}
 		else
 		{
-			num c = ems.count.load( std::memory_order_relaxed );
-			bool is_disp = false;
-			spin_until(
-				[this, &c, &is_disp]() noexcept
-				{
-					while (c > 0 && !this->ems.count.compare_exchange_weak( c, c - 1, std::memory_order_acquire ));
-					return (is_disp = this->is_disposed()) || (c > 0);
-				},
-				[this, &c, &is_disp]() noexcept
-				{
-					return (is_disp = this->is_disposed()) || (c = this->ems.count.load( std::memory_order_relaxed )) > 0;
-				} );
-			return (!is_disp) ? acquire( p_index_out ) : return_code::rejected;
+			if constexpr (FLAGS & vacancies_flags::waitable_client)
+			{
+				num c = ems.count.load( std::memory_order_relaxed );
+				bool is_disp = false;
+				spin_until(
+					[this, &c, &is_disp]() noexcept
+					{
+						while (c > 0 && !this->ems.count.compare_exchange_weak( c, c - 1, std::memory_order_acquire ));
+						return (is_disp = this->is_disposed()) || (c > 0);
+					},
+					[this, &c, &is_disp]() noexcept
+					{
+						return (is_disp = this->is_disposed()) || (c = this->ems.count.load( std::memory_order_relaxed )) > 0;
+					} );
+				return (!is_disp) ? acquire( p_index_out ) : return_code::rejected;
+			}
+			else
+			{
+				bool is_disp = false;
+				spin_until(
+					[this, &is_disp]() noexcept
+					{
+						/*num old_count = ems.count.fetch_add( -1, std::memory_order_acquire );
+						if (old_count > 0)
+						{
+						}
+						else
+						{
+							ems.count.fetch_add( 1, std::memory_order_relaxed );
+						}*/
+						num old_count;
+						while (
+							(old_count = ems.count.fetch_add( -1, std::memory_order_acquire )) <= 0 &&
+							(old_count = ems.count.fetch_add( 1, std::memory_order_relaxed )) >= 0);
+						is_disp = this->is_disposed();
+						return (is_disp || old_count > 0) ? true : false;
+					},
+					[this, &is_disp]() noexcept
+					{
+						return (is_disp = this->is_disposed()) || this->ems.count.load( std::memory_order_relaxed ) > 0;
+					} );
+				return (!is_disp) ? acquire( p_index_out ) : return_code::rejected;
+			}
 		}
 	}
 
 	[[nodiscard]]
-	return_code try_acquire_wait( un* const p_index_out )
+	return_code try_acquire_wait( un* const p_index_out ) KWTOOLS_ASSUME_NEVER_THROWS
 	{
 		static_assert(FLAGS & vacancies_flags::waitable_client,
 			"vacancies<...>::try_acquire_wait requires vacancies_flags::waitable_client to be set.");
@@ -225,9 +277,7 @@ public:
 		num old_count;
 		if constexpr (FLAGS & vacancies_flags::single_client)
 		{
-			if (cls.cached_count > 0)
-				old_count = cls.cached_count--;
-			else if (cache_count() > 0)
+			if (cls.cached_count > 0 || cache_count() > 0)
 				old_count = cls.cached_count--;
 			else
 				old_count = ems.count.fetch_add( -1, std::memory_order_acquire );
@@ -239,16 +289,19 @@ public:
 
 		if (old_count <= 0)
 		{
-			std::unique_lock<std::mutex> lock( ems.mutex ); // not noexcept
-			ems.cv.wait( lock, [this]() noexcept { return this->ems.awakened > 0; } );
-			ems.awakened--;
-			if (is_disposed())
-				return return_code::rejected;
+			if constexpr (FLAGS & vacancies_flags::waitable_client)
+			{
+				std::unique_lock<std::mutex> lock( ems.mutex ); // assume never throws
+				ems.cv.wait( lock, [this]() noexcept { return this->ems.awakened > 0; } );
+				ems.awakened--;
+				if (is_disposed())
+					return return_code::rejected;
+			}
 		}
 		return acquire( p_index_out );
 	}
 
-	num count() noexcept
+	num count() const noexcept
 	{
 		if constexpr (FLAGS & vacancies_flags::single_client)
 			return cache_count();
@@ -256,7 +309,7 @@ public:
 			return ems.count.load( std::memory_order_acquire );
 	}
 
-	bool is_disposed() noexcept
+	bool is_disposed() const noexcept
 	{
 		if constexpr (FLAGS & vacancies_flags::waitable_client)
 			return ems.disposed.load( std::memory_order_relaxed );
@@ -289,7 +342,7 @@ private:
 		return return_code::success;
 	}
 
-	num cache_count() noexcept
+	num cache_count() const noexcept
 	{
 		static_assert(FLAGS & vacancies_flags::single_client,
 			"vacancies<...>::cache_count requires vacancies_flags::single_client to be set.");
@@ -300,8 +353,8 @@ private:
 		return cls.cached_count;
 	}
 
-	using employer_side_t = detail::vacancies_employer_side<FLAGS & vacancies_flags::waitable_client>;
-	using client_side_t = detail::vacancies_client_side<FLAGS & vacancies_flags::single_client>;
+	using employer_side_t = detail::vacancies_employer_side<bool( FLAGS & vacancies_flags::waitable_client )>;
+	using client_side_t = detail::vacancies_client_side<bool( FLAGS & vacancies_flags::single_client )>;
 
 	static constexpr un employer_side_align =
 		(FLAGS & vacancies_flags::cache_optimised) ? std::hardware_destructive_interference_size : 0;

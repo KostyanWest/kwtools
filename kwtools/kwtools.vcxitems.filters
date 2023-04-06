@@ -21,4 +21,7 @@
       <Filter>concurrent</Filter>
     </ClInclude>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)cpp.hint" />
+  </ItemGroup>
 </Project>
