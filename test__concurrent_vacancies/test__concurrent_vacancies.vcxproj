@@ -21,8 +21,8 @@
   <PropertyGroup Label="Globals">
     <VCProjectVersion>16.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
-    <ProjectGuid>{9661f619-471b-46fc-b91d-3cff85d8b81c}</ProjectGuid>
-    <RootNamespace>testconcurrentqueue</RootNamespace>
+    <ProjectGuid>{f482dba3-9cb2-486e-8e8e-f882030ca9ee}</ProjectGuid>
+    <RootNamespace>testconcurrentvacancies</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />

@@ -4,6 +4,9 @@
     <Filter Include="concurrent">
       <UniqueIdentifier>{e9f43e27-3aee-48c8-824e-46b4029ddca4}</UniqueIdentifier>
     </Filter>
+    <Filter Include="alt">
+      <UniqueIdentifier>{c3631305-824c-4e26-8e3a-6eb679ae4e9b}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="$(MSBuildThisFileDirectory)concurrent\vacancies.hpp">
@@ -19,6 +22,15 @@
     <ClInclude Include="$(MSBuildThisFileDirectory)flags.hpp" />
     <ClInclude Include="$(MSBuildThisFileDirectory)concurrent\defs.hpp">
       <Filter>concurrent</Filter>
+    </ClInclude>
+    <ClInclude Include="$(MSBuildThisFileDirectory)alt\mutex.hpp">
+      <Filter>alt</Filter>
+    </ClInclude>
+    <ClInclude Include="$(MSBuildThisFileDirectory)alt\condition_variable.hpp">
+      <Filter>alt</Filter>
+    </ClInclude>
+    <ClInclude Include="$(MSBuildThisFileDirectory)alt\thread.hpp">
+      <Filter>alt</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

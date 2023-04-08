@@ -6,11 +6,6 @@
 // A macro to enable the compatibility with Boost library
 //#define KWTOOLS_USE_BOOST
 
-// Some macros to fix bugs in Microsoft STL
-#ifdef _MSC_VER
-#define _ENABLE_EXTENDED_ALIGNED_STORAGE
-#endif
-
 #include <kwtools/concurrent/vacancies.hpp>
 #include <kwtools/alt/thread.hpp>
 

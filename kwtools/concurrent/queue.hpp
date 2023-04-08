@@ -1,10 +1,10 @@
-﻿// Copyright (c) 2022-2023 KostyanWest
+﻿#ifndef KWTOOLS_CONCURRENT_QUEUE_HPP
+#define KWTOOLS_CONCURRENT_QUEUE_HPP
+
+// Copyright (c) 2022-2023 KostyanWest
 //
 // Distributed under the Boost Software License, Version 1.0.
 // (See LICENSE.txt or http://www.boost.org/LICENSE_1_0.txt)
-
-#ifndef KWTOOLS_CONCURRENT_QUEUE_HPP
-#define KWTOOLS_CONCURRENT_QUEUE_HPP
 
 #include <kwtools/concurrent/vacancies.hpp>
 
@@ -27,6 +27,7 @@ enum class cell_status : uint8_t
 	constructed,
 	demolision,
 };
+
 
 template<typename T, bool IS_SAFE>
 struct cell

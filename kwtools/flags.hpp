@@ -1,10 +1,10 @@
-﻿// Copyright (c) 2022-2023 KostyanWest
+﻿#ifndef KWTOOLS_FLAGS_HPP
+#define KWTOOLS_FLAGS_HPP
+
+// Copyright (c) 2022-2023 KostyanWest
 //
 // Distributed under the Boost Software License, Version 1.0.
 // (See LICENSE.txt or http://www.boost.org/LICENSE_1_0.txt)
-
-#ifndef KWTOOLS_FLAGS_HPP
-#define KWTOOLS_FLAGS_HPP
 
 #include <type_traits>
 
@@ -83,14 +83,14 @@ struct flags
 
 
 template<typename Enum, std::enable_if_t<has_flags_member_v<Enum>, bool> = true>
-inline constexpr flags<Enum> operator&( const Enum left, const Enum right ) noexcept
+constexpr flags<Enum> operator&( const Enum left, const Enum right ) noexcept
 {
 	using under_type = std::underlying_type_t<Enum>;
 	return flags<Enum>( static_cast<under_type>(left) & static_cast<under_type>(right) );
 }
 
 template<typename Enum, std::enable_if_t<has_flags_member_v<Enum>, bool> = true>
-inline constexpr flags<Enum> operator&( const Enum left, const flags<Enum> right ) noexcept
+constexpr flags<Enum> operator&( const Enum left, const flags<Enum> right ) noexcept
 {
 	using under_type = std::underlying_type_t<Enum>;
 	return flags<Enum>( static_cast<under_type>(left) & static_cast<under_type>(right) );
@@ -98,14 +98,14 @@ inline constexpr flags<Enum> operator&( const Enum left, const flags<Enum> right
 
 
 template<typename Enum, std::enable_if_t<has_flags_member_v<Enum>, bool> = true>
-inline constexpr flags<Enum> operator|( const Enum left, const Enum right ) noexcept
+constexpr flags<Enum> operator|( const Enum left, const Enum right ) noexcept
 {
 	using under_type = std::underlying_type_t<Enum>;
 	return flags<Enum>(static_cast<under_type>(left) | static_cast<under_type>(right));
 }
 
 template<typename Enum, std::enable_if_t<has_flags_member_v<Enum>, bool> = true>
-inline constexpr flags<Enum> operator|( const Enum left, const flags<Enum> right ) noexcept
+constexpr flags<Enum> operator|( const Enum left, const flags<Enum> right ) noexcept
 {
 	using under_type = std::underlying_type_t<Enum>;
 	return flags<Enum>( static_cast<under_type>(left) | static_cast<under_type>(right) );
@@ -113,14 +113,14 @@ inline constexpr flags<Enum> operator|( const Enum left, const flags<Enum> right
 
 
 template<typename Enum, std::enable_if_t<has_flags_member_v<Enum>, bool> = true>
-inline constexpr flags<Enum> operator^( const Enum left, const Enum right ) noexcept
+constexpr flags<Enum> operator^( const Enum left, const Enum right ) noexcept
 {
 	using under_type = std::underlying_type_t<Enum>;
 	return flags<Enum>(static_cast<under_type>(left) ^ static_cast<under_type>(right));
 }
 
 template<typename Enum, std::enable_if_t<has_flags_member_v<Enum>, bool> = true>
-inline constexpr flags<Enum> operator^( const Enum left, const flags<Enum> right ) noexcept
+constexpr flags<Enum> operator^( const Enum left, const flags<Enum> right ) noexcept
 {
 	using under_type = std::underlying_type_t<Enum>;
 	return flags<Enum>( static_cast<under_type>(left) ^ static_cast<under_type>(right) );
@@ -128,7 +128,7 @@ inline constexpr flags<Enum> operator^( const Enum left, const flags<Enum> right
 
 
 template<typename Enum, std::enable_if_t<has_flags_member_v<Enum>, bool> = true>
-inline constexpr bool operator!( const Enum value ) noexcept
+constexpr bool operator!( const Enum value ) noexcept
 {
 	using under_type = std::underlying_type_t<Enum>;
 	return !static_cast<under_type>(value);

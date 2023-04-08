@@ -1,14 +1,15 @@
-﻿// Copyright (c) 2022-2023 KostyanWest
+﻿#ifndef KWTOOLS_CONCURRENT_DEFS_HPP
+#define KWTOOLS_CONCURRENT_DEFS_HPP
+
+// Copyright (c) 2022-2023 KostyanWest
 //
 // Distributed under the Boost Software License, Version 1.0.
 // (See LICENSE.txt or http://www.boost.org/LICENSE_1_0.txt)
 
-#ifndef KWTOOLS_CONCURRENT_DEFS_HPP
-#define KWTOOLS_CONCURRENT_DEFS_HPP
-
 #include <kwtools/defs.hpp>
 
 #include <new>
+
 
 
 namespace kwt::concurrent

@@ -1,16 +1,17 @@
-﻿// Copyright (c) 2022-2023 KostyanWest
+﻿#ifndef KWTOOLS_CONCURRENT_VACANCIES_HPP
+#define KWTOOLS_CONCURRENT_VACANCIES_HPP
+
+// Copyright (c) 2022-2023 KostyanWest
 //
 // Distributed under the Boost Software License, Version 1.0.
 // (See LICENSE.txt or http://www.boost.org/LICENSE_1_0.txt)
-
-#ifndef KWTOOLS_CONCURRENT_VACANCIES_HPP
-#define KWTOOLS_CONCURRENT_VACANCIES_HPP
 
 #include <kwtools/flags.hpp>
 #include <kwtools/concurrent/defs.hpp>
 #include <kwtools/concurrent/spinlock.hpp>
 
-#include <mutex>
+#include <kwtools/alt/mutex.hpp>
+#include <kwtools/alt/condition_variable.hpp>
 
 
 
@@ -41,9 +42,9 @@ struct vacancies_employer_side
 	}
 
 	mutable std::atomic<num> count;
-	std::mutex               mutex{};
+	alt::mutex               mutex{};
 	num                      awakened = 0;
-	std::condition_variable  cv{}; // assume never throws
+	alt::condition_variable  cv{}; // assume never throws
 	std::atomic<bool>        disposed = false;
 };
 
@@ -131,7 +132,7 @@ public:
 			if (old_count < 0)
 			{
 				{
-					std::unique_lock<std::mutex> lock( ems.mutex ); // assume never throws
+					alt::unique_lock<alt::mutex> lock( ems.mutex ); // assume never throws
 					ems.awakened++;
 				}
 				ems.cv.notify_one();
@@ -139,8 +140,9 @@ public:
 		}
 	}
 
-	void add_bunch( const num add_count ) KWTOOLS_ASSUME_NOEXCEPT(!(FLAGS& vacancies_flags::waitable_client))
+	void add_bunch( const num add_count ) KWTOOLS_ASSUME_NOEXCEPT(!(FLAGS & vacancies_flags::waitable_client))
 	{
+		// TODO TODO TODO TODO TODO
 		num old_count = ems.count.fetch_add( add_count, std::memory_order_release );
 		if constexpr (FLAGS & vacancies_flags::waitable_client)
 		{
@@ -148,7 +150,7 @@ public:
 			{
 				num num_to_wakeup = std::min( -old_count, add_count );
 				{
-					std::unique_lock<std::mutex> lock( ems.mutex ); // assume never throws
+					alt::unique_lock<alt::mutex> lock( ems.mutex ); // assume never throws
 					ems.awakened += num_to_wakeup;
 				}
 				ems.cv.notify_all();
@@ -291,7 +293,7 @@ public:
 		{
 			if constexpr (FLAGS & vacancies_flags::waitable_client)
 			{
-				std::unique_lock<std::mutex> lock( ems.mutex ); // assume never throws
+				alt::unique_lock<alt::mutex> lock( ems.mutex ); // assume never throws
 				ems.cv.wait( lock, [this]() noexcept { return this->ems.awakened > 0; } );
 				ems.awakened--;
 				if (is_disposed())
@@ -319,10 +321,11 @@ public:
 
 	void dispose() noexcept
 	{
+		// TODO TODO TODO TODO TODO
 		if constexpr (FLAGS & vacancies_flags::waitable_client)
 		{
 			{
-				std::unique_lock<std::mutex> lock( ems.mutex );
+				alt::unique_lock<alt::mutex> lock( ems.mutex );
 				ems.awakened = -(std::numeric_limits<num>::lowest() / 2);
 				ems.disposed.store( true, std::memory_order_relaxed );
 			}

@@ -14,6 +14,9 @@
     <ProjectCapability Include="SourceItemsFromImports" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="$(MSBuildThisFileDirectory)alt\condition_variable.hpp" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)alt\mutex.hpp" />
+    <ClInclude Include="$(MSBuildThisFileDirectory)alt\thread.hpp" />
     <ClInclude Include="$(MSBuildThisFileDirectory)concurrent\defs.hpp" />
     <ClInclude Include="$(MSBuildThisFileDirectory)concurrent\queue.hpp" />
     <ClInclude Include="$(MSBuildThisFileDirectory)concurrent\spinlock.hpp" />
