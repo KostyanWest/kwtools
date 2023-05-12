@@ -6,78 +6,13 @@
 // Distributed under the Boost Software License, Version 1.0.
 // (See LICENSE.txt or http://www.boost.org/LICENSE_1_0.txt)
 
-#include <kwtools/concurrent/vacancies.hpp>
-
-#include <optional>
+#include <kwtools/concurrent/cell_buffer.hpp>
+#include <kwtools/concurrent/vacancies_new.hpp>
 
 
 
 namespace kwt::concurrent
 {
-
-
-namespace detail
-{
-
-
-enum class cell_status : uint8_t
-{
-	clear,
-	building,
-	constructed,
-	demolision,
-};
-
-
-template<typename T, bool IS_SAFE>
-struct cell
-{
-	bool cmp_status( cell_status expected ) const noexcept
-	{
-		return status.load( std::memory_order_acquire ) == expected;
-	}
-	void set_status( cell_status status ) noexcept
-	{
-		this->status.store( status, std::memory_order_release );
-	}
-	bool cmp_xchg_status( cell_status expected, cell_status desired ) noexcept
-	{
-		return this->status.compare_exchange_weak(
-			expected,
-			desired,
-			std::memory_order_acquire,
-			std::memory_order_relaxed
-		);
-	}
-
-	constexpr T* ptr() const noexcept { return reinterpret_cast<T*>(const_cast<char*>(placeholder)); }
-	constexpr T&& ref() const noexcept { return std::move( *ptr() ); }
-
-private:
-	alignas(get_optimal_alignas( sizeof( T ) ))
-		char placeholder[sizeof( T )]{};
-	std::atomic<cell_status> status{ cell_status::clear };
-};
-
-template<typename T>
-struct cell<T, false>
-{
-public:
-	bool cmp_status( cell_status expected ) const noexcept { return true; }
-	void set_status( cell_status status ) noexcept {}
-	bool cmp_xchg_status( cell_status expected, cell_status desired ) noexcept { return true; }
-
-	constexpr T* ptr() const noexcept { return reinterpret_cast<T*>(const_cast<char*>(placeholder)); }
-	constexpr T&& ref() const noexcept { return std::move( *ptr() ); }
-
-private:
-	alignas(get_optimal_alignas( sizeof( T ) ))
-		char placeholder[sizeof( T )]{};
-};
-
-
-} // namespace detail
-
 
 
 // Тег, использующийся для выбора конструктора с функцией ожидания
@@ -138,169 +73,10 @@ template<
 >
 class queue
 {
-	static_assert(std::is_nothrow_destructible_v<T>,
-		"queue<T, C, ...> requires T to be noexcept destructible.");
-	static_assert(is_powerof2( C ),
-		"queue<T, C, ...> requires C to be a power of 2.");
+	static_assert(std::is_nothrow_destructible_v<T>, "queue<T, C, ...> requires T to be noexcept destructible.");
+	static_assert(is_powerof2( C ), "queue<T, C, ...> requires C to be a power of 2.");
 
 	using cell_t = detail::cell<T, SAFE_PUSH || SAFE_POP>;
-
-	/*
-	Класс-помошник, захватывает свободный индекс при создании, освобождает при разрушении.
-	*/
-	class push_helper
-	{
-		friend queue;
-
-		push_helper( queue* const queue ) noexcept
-			: ptr( queue )
-		{
-			rcode = ptr->pusher.try_acquire(
-				[this]( const un i ) noexcept { return this->check_cell( i ); }
-			);
-		}
-
-		push_helper( queue* const queue, const wait_tag_t ) noexcept
-			: ptr( queue )
-		{
-			static_assert(WAITABLE_PUSH,
-				"queue<T, C, ...>::[try_]push_wait requires WAITABLE_PUSH to be true.");
-
-			rcode = ptr->pusher.try_acquire_wait(
-				[this]( const un i ) noexcept { return this->check_cell( i ); }
-			);
-		}
-
-		push_helper( const push_helper& ) = delete;
-		push_helper* operator = ( const push_helper& ) = delete;
-
-		template<typename... Args>
-		return_code emplace( Args&&... args ) noexcept(std::is_nothrow_constructible_v<T, Args&&...>)
-		{
-			if (rcode == return_code::success)
-			{
-				new (ptr->buffer[index % C].ptr()) T( std::forward<Args>( args )... );
-				successed = true;
-			}
-			return rcode;
-		}
-
-		bool check_cell( const un i ) noexcept
-		{
-			index = i;
-			return ptr->buffer[i % C].cmp_xchg_status(
-				detail::cell_status::clear,
-				detail::cell_status::building
-			);
-		}
-
-		~push_helper()
-		{
-			if (rcode == return_code::success)
-			{
-				if (successed)
-				{
-					ptr->buffer[index % C].set_status( detail::cell_status::constructed );
-					ptr->popper.add();
-				}
-				else
-				{
-					ptr->buffer[index % C].set_status( detail::cell_status::clear );
-					ptr->pusher.add();
-				}
-			}
-		}
-
-		queue* const ptr;
-		un index;
-		return_code rcode;
-		bool successed = false;
-	};
-
-	/*
-	Класс-помошник, захватывает свободный индекс при создании, освобождает при разрушении.
-	Предоставляет возможность передачи rvalue сслыки напрямую из внутреннего буфера очереди.
-	*/
-	class pop_helper
-	{
-		friend queue;
-
-		pop_helper( queue* const queue ) noexcept
-			: ptr( queue )
-		{
-			rcode = ptr->popper.try_acquire(
-				[this]( const un i ) noexcept { return this->check_cell( i ); }
-			);
-		}
-
-		pop_helper( queue* const queue, const wait_tag_t ) noexcept
-			: ptr( queue )
-		{
-			static_assert(WAITABLE_POP,
-				"queue<T, C, ...>::[try_]pop_wait requires WAITABLE_POP to be true.");
-
-			rcode = ptr->popper.try_acquire_wait(
-				[this]( const un i ) noexcept { return this->check_cell( i ); }
-			);
-		}
-
-		pop_helper( const pop_helper& other ) = delete;
-		pop_helper& operator = ( const pop_helper& other ) = delete;
-
-		pop_helper( pop_helper&& other ) noexcept
-			: ptr( other.ptr ), index( other.index ), rcode( other.rcode )
-		{
-			other.rcode = return_code::rejected;
-		}
-
-		bool check_cell( const un i ) noexcept
-		{
-			index = i;
-			return ptr->buffer[i % C].cmp_xchg_status(
-				detail::cell_status::constructed,
-				detail::cell_status::demolision
-			);
-		}
-
-	public:
-		/*
-		Явное преобразование к прямой ссылке.
-
-		@return прямая rvalue ссылка на объект во внутреннем буфере очереди.
-		*/
-		constexpr T&& ref() const noexcept
-		{
-			return ptr->buffer[index % C].ref();
-		}
-
-		/*
-		Неявное преобразование к прямой ссылке.
-
-		@return прямая rvalue ссылка на объект во внутреннем буфере очереди.
-		*/
-		constexpr operator T && () const noexcept
-		{
-			return ref();
-		}
-
-		/*
-		Освобождение захваченного индекса.
-		*/
-		~pop_helper()
-		{
-			if (rcode == return_code::success)
-			{
-				ptr->buffer[index % C].ptr()->~T();
-				ptr->buffer[index % C].set_status( detail::cell_status::clear );
-				ptr->pusher.add();
-			}
-		}
-
-	private:
-		queue* const ptr;
-		un index;
-		return_code rcode;
-	};
 
 public:
 	explicit queue() noexcept(!WAITABLE_PUSH && !WAITABLE_POP) {}
@@ -539,15 +315,15 @@ public:
 		{
 			index = i;
 			return this->buffer[i % C].cmp_xchg_status(
-				detail::cell_status::constructed,
-				detail::cell_status::demolision
+				detail::cell_status::pushed,
+				detail::cell_status::poping
 			);
 
 		};
 		while (popper.try_acquire( predicate ) == return_code::success)
 		{
 			buffer[index % C].ptr()->~T();
-			buffer[index % C].set_status( detail::cell_status::clear );
+			buffer[index % C].set_status( detail::cell_status::poped );
 		}
 	}
 

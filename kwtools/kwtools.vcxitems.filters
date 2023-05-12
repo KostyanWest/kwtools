@@ -13,9 +13,6 @@
       <Filter>concurrent</Filter>
     </ClInclude>
     <ClInclude Include="$(MSBuildThisFileDirectory)defs.hpp" />
-    <ClInclude Include="$(MSBuildThisFileDirectory)concurrent\queue.hpp">
-      <Filter>concurrent</Filter>
-    </ClInclude>
     <ClInclude Include="$(MSBuildThisFileDirectory)concurrent\spinlock.hpp">
       <Filter>concurrent</Filter>
     </ClInclude>
@@ -31,6 +28,15 @@
     </ClInclude>
     <ClInclude Include="$(MSBuildThisFileDirectory)alt\thread.hpp">
       <Filter>alt</Filter>
+    </ClInclude>
+    <ClInclude Include="$(MSBuildThisFileDirectory)concurrent\cell_buffer.hpp">
+      <Filter>concurrent</Filter>
+    </ClInclude>
+    <ClInclude Include="$(MSBuildThisFileDirectory)concurrent\cell_queue.hpp">
+      <Filter>concurrent</Filter>
+    </ClInclude>
+    <ClInclude Include="$(MSBuildThisFileDirectory)concurrent\vacancies_new.hpp">
+      <Filter>concurrent</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

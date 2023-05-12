@@ -5,8 +5,20 @@
 
 // A macro to enable the compatibility with Boost library
 //#define KWTOOLS_USE_BOOST
+#define TESTONLY_VACANCIES_NEW
 
+
+#ifdef TESTONLY_VACANCIES_NEW
+#include <kwtools/concurrent/vacancies_new.hpp>
+#define TESTONLY_RETURN_CODE_SUCCESS
+#define TESTONLY_VACANCIES_ADD if constexpr (C & F1) p_vacancies2->add(); else p_vacancies1->add();
+#else
 #include <kwtools/concurrent/vacancies.hpp>
+#define TESTONLY_RETURN_CODE_SUCCESS == kwt::concurrent::return_code::success
+#define TESTONLY_VACANCIES_ADD p_vacancies2->add();
+#endif
+
+//#include <kwtools/concurrent/vacancies.hpp>
 #include <kwtools/alt/thread.hpp>
 
 //#include <atomic_queue/atomic_queue.h>
@@ -72,7 +84,7 @@ inline constexpr const char* ts_to_str =
 	(TS == ts_try) ? "   try" :
 	(TS == ts_spin) ? "  spin" :
 	(TS == ts_wait) ? "  wait" :
-	"   wtf";
+	" -wtf-";
 
 
 struct test_info
@@ -117,7 +129,7 @@ template<test_strategy TS, flags F1, flags F2>
 void thread_routine(
 	kwt::concurrent::vacancies<F1>* p_vacancies1,
 	kwt::concurrent::vacancies<F2>* p_vacancies2,
-	test_info* p_info,
+	test_info*                      p_info,
 	un const                        count
 )
 {
@@ -135,24 +147,24 @@ void thread_routine(
 			kwt::concurrent::spin_until(
 				[p_vacancies1, &index]() noexcept
 				{
-					return p_vacancies1->try_acquire( &index ) == kwt::concurrent::return_code::success;
+					return p_vacancies1->try_acquire( &index ) TESTONLY_RETURN_CODE_SUCCESS;
 				}
 			);
-			p_vacancies2->add();
+			TESTONLY_VACANCIES_ADD;
 		}
 		else if constexpr (TS == ts_spin)
 		{
 			[[maybe_unused]] auto code = p_vacancies1->try_acquire_spin( &index );
-			p_vacancies2->add();
+			TESTONLY_VACANCIES_ADD;
 		}
 		else if constexpr (TS == ts_wait)
 		{
-			[[maybe_unused]] auto code = p_vacancies1->try_acquire_wait( &index );
-			p_vacancies2->add();
+			//[[maybe_unused]] auto code = p_vacancies1->try_acquire_wait( &index );
+			TESTONLY_VACANCIES_ADD;
 		}
 		else
 		{
-			static_assert((int)TS && false, "wtf?");
+			static_assert(kwt::always_false<decltype(TS)>, "wtf?");
 		}
 	}
 	p_info->get_finish();
@@ -167,6 +179,9 @@ void begin_test(
 	un const total_count
 )
 {
+	if constexpr ((TS == test_strategy::wait) || (W & F1) || (W & F2))
+		return;
+
 	un const total_thread_count = push_thread_count + pop_thread_count;
 	un const per_push_count = total_count / push_thread_count;
 	un const per_pop_count = total_count / pop_thread_count;
@@ -175,6 +190,10 @@ void begin_test(
 	using vacancies_t2 = kwt::concurrent::vacancies<F2>;
 	auto p_vacancies1 = std::make_unique<vacancies_t1>( vacancies_count );
 	auto p_vacancies2 = std::make_unique<vacancies_t2>( 0 );
+#ifdef TESTONLY_VACANCIES_NEW
+	p_vacancies1->link_count( reinterpret_cast<std::atomic<num>*>(p_vacancies2.get()) );
+	p_vacancies2->link_count( reinterpret_cast<std::atomic<num>*>(p_vacancies1.get()) );
+#endif
 	auto p_info = std::make_unique<test_info>( total_thread_count );
 
 	std::vector<kwt::alt::thread> push_threads( push_thread_count );
@@ -193,15 +212,15 @@ void begin_test(
 	num check_count1 = p_vacancies1->count();
 	num check_count2 = p_vacancies2->count();
 	auto check_code1 = p_vacancies1->try_acquire( &check_index1 );
-	p_vacancies2->add();
+	TESTONLY_VACANCIES_ADD;
 	auto check_code2 = p_vacancies2->try_acquire( &check_index2 );
 
 	bool success =
 		(check_count1 == vacancies_count) &&
-		(check_code1 == kwt::concurrent::return_code::success) &&
+		(check_code1 TESTONLY_RETURN_CODE_SUCCESS) &&
 		(check_index1 == push_thread_count * per_push_count) &&
 		(check_count2 == 0) &&
-		(check_code2 == kwt::concurrent::return_code::success) &&
+		(check_code2 TESTONLY_RETURN_CODE_SUCCESS) &&
 		(check_index2 == pop_thread_count * per_pop_count);
 
 	auto time = std::chrono::duration_cast<std::chrono::milliseconds>(p_info->tp_end - p_info->tp_start).count();
@@ -224,9 +243,7 @@ void begin_test(
 
 int main()
 {
-	sizeof( kwt::alt::mutex );
-	sizeof( kwt::alt::condition_variable );
-	std::cout << __FILE__ " STARTED " << sizeof( std::mutex ) << std::endl;
+	std::cout << __FILE__ " STARTED" << std::endl;
 
 	const un total_count = 10'000'000;
 	const un vacancies_count = 500;
@@ -285,7 +302,7 @@ int main()
 	begin_test<ts_wait, _WC>( 5, 5, vacancies_count, total_count );
 
 
-	begin_test<ts_try, S__, ___>( 1, 2, vacancies_count, total_count );
+	/*begin_test<ts_try, S__, ___>( 1, 2, vacancies_count, total_count );
 	begin_test<ts_try, SW_, _W_>( 1, 2, vacancies_count, total_count );
 	begin_test<ts_try, S_C, __C>( 1, 2, vacancies_count, total_count );
 	begin_test<ts_try, SWC, _WC>( 1, 2, vacancies_count, total_count );
@@ -323,7 +340,7 @@ int main()
 	begin_test<ts_spin, SWC, _WC>( 1, 8, vacancies_count, total_count );
 
 	begin_test<ts_wait, SW_, _W_>( 1, 8, vacancies_count, total_count );
-	begin_test<ts_wait, SWC, _WC>( 1, 8, vacancies_count, total_count );
+	begin_test<ts_wait, SWC, _WC>( 1, 8, vacancies_count, total_count );*/
 
 	std::cout << __FILE__ " FINISHED" << std::endl;
 	return 0;

@@ -1,6 +1,23 @@
 // Файлы указаний помогают среде IDE Visual Studio интерпретировать идентификаторы Visual C++
 // (например, имена функций и макросов).
 // Дополнительные сведения: https://go.microsoft.com/fwlink/?linkid=865984
+
+#define __cplusplus
+#define _MSVC_LANG
+#define __GNUC__
+#define __clang__
+
+#define KWTOOLS_ASSUME(x)
+#define KWTOOLS_ASSUME_UNREACHABLE
+#define KWTOOLS_CONDITION_LIKELY(x)
+#define KWTOOLS_CONDITION_UNLIKELY(x)
+#define KWTOOLS_ALWAYS_INLINE
+#define KWTOOLS_NEVER_INLINE
+
+#define KWTOOLS_MSVC_SAFEBUFFERS
+
 #define KWTOOLS_ASSUME_NEVER_THROWS
 #define KWTOOLS_ASSUME_NEVER_THROWS_WHEN(x)
 #define KWTOOLS_ASSUME_NOEXCEPT(x)
+
+#define KWTOOLS_SPINLOCK_PAUSE
