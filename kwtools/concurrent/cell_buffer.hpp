@@ -1,5 +1,5 @@
-﻿#ifndef KWTOOLS_CONCURRENT_RING_BUFFER_HPP
-#define KWTOOLS_CONCURRENT_RING_BUFFER_HPP
+﻿#ifndef KWTOOLS_CONCURRENT_CELL_BUFFER_HPP
+#define KWTOOLS_CONCURRENT_CELL_BUFFER_HPP
 
 // Copyright (c) 2023 KostyanWest
 //
@@ -121,10 +121,10 @@ struct alignas(cache_line_size) cell_state_aligned : cell_state {};
 template<typename T>
 struct cell_placeholder
 {
-	constexpr T* ptr() noexcept { return reinterpret_cast<T*>(&placeholder); }
-	constexpr T* const ptr() const noexcept { return reinterpret_cast<T* const>(&placeholder); }
+	constexpr T* ptr() noexcept { return reinterpret_cast<T*>(placeholder); }
+	constexpr T* const ptr() const noexcept { return reinterpret_cast<T* const>(placeholder); }
 
-	std::aligned_storage_t<sizeof(T), alignof(T)> placeholder{};
+	alignas(alignof(T)) char placeholder[sizeof(T)];
 };
 
 template<typename T>
@@ -144,7 +144,7 @@ struct alignas(optimal_align_for<cell<T>>) cell_aligned : cell<T> {};
 
 // IsSeparated = true, HasState = true
 template<typename T, un Count, bool IsSeparated, bool HasState>
-struct cell_buffer_layout
+struct alignas(cache_line_size) cell_buffer_layout
 {
 	struct helper_layout
 	{
@@ -196,7 +196,7 @@ struct cell_buffer_layout
 
 // IsSeparated = false, HasState = true
 template<typename T, un Count>
-struct cell_buffer_layout<T, Count, false, true>
+struct alignas(cache_line_size) cell_buffer_layout<T, Count, false, true>
 {
 	struct helper_layout
 	{
@@ -245,7 +245,7 @@ struct cell_buffer_layout<T, Count, false, true>
 
 // IsSeparated = any, HasState = false
 template<typename T, un Count, bool IsSeparated>
-struct cell_buffer_layout<T, Count, IsSeparated, false>
+struct alignas(cache_line_size) cell_buffer_layout<T, Count, IsSeparated, false>
 {
 	struct helper_layout
 	{
@@ -284,14 +284,23 @@ struct cell_buffer_layout<T, Count, IsSeparated, false>
 
 template<typename T, un Count, bool HasState>
 class cell_buffer
-	: private detail::cell_buffer_layout<T, Count, HasState, (alignof(T) / cache_line_size >= 2)>
+	: private detail::cell_buffer_layout<T, Count, (alignof(T) / cache_line_size >= 2), HasState>
 {
+	using layout = detail::cell_buffer_layout<T, Count, (alignof(T) / cache_line_size >= 2), HasState>;
+
 public:
-	using detail::cell_buffer_layout<T, Count, HasState, (alignof(T) / cache_line_size >= 2)>::push_helper;
-	using detail::cell_buffer_layout<T, Count, HasState, (alignof(T) / cache_line_size >= 2)>::pop_helper;
+	layout::push_helper get_push_helper( const un index ) noexcept
+	{
+		return layout::push_helper{ *static_cast<layout*>(this), index };
+	}
+
+	layout::pop_helper get_pop_helper( const un index ) noexcept
+	{
+		return layout::pop_helper{ *static_cast<layout*>(this), index };
+	}
 };
 
 
 } // namespace kwt::concurrent
 
-#endif // !KWTOOLS_CONCURRENT_RING_BUFFER_HPP
+#endif // !KWTOOLS_CONCURRENT_CELL_BUFFER_HPP

@@ -1,0 +1,1 @@
+(test__concurrent_vacancies.exe > _0.txt) & ( test__concurrent_vacancies.exe > _1.txt) & ( test__concurrent_vacancies.exe > _2.txt) & ( test__concurrent_vacancies.exe > _3.txt) & ( test__concurrent_vacancies.exe > _4.txt) & (python test.py)

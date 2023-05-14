@@ -124,7 +124,7 @@ using un = std::size_t;
 using num = std::make_signed_t<un>;
 
 
-enum class always_false_struct { not_use };
+enum class always_false_struct { do_not_use };
 
 template<typename...>
 inline constexpr bool always_false = false;

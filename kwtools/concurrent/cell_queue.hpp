@@ -1,5 +1,5 @@
-﻿#ifndef KWTOOLS_CONCURRENT_QUEUE_HPP
-#define KWTOOLS_CONCURRENT_QUEUE_HPP
+﻿#ifndef KWTOOLS_CONCURRENT_CELL_QUEUE_HPP
+#define KWTOOLS_CONCURRENT_CELL_QUEUE_HPP
 
 // Copyright (c) 2022-2023 KostyanWest
 //
@@ -63,231 +63,137 @@ API:
 @param WAITABLE_POP - используется ли постфикс `wait` для `pop`.
 Если использование таких функций не планируется, установите `false` для уменьшения размера очереди.
 */
-template<
-	typename T,
-	size_t C,
-	bool SAFE_PUSH = true,
-	bool WAITABLE_PUSH = true,
-	bool SAFE_POP = true,
-	bool WAITABLE_POP = true
->
+template<typename T, size_t Count, vacancies_flags F1, vacancies_flags F2 = F1>
 class queue
 {
-	static_assert(std::is_nothrow_destructible_v<T>, "queue<T, C, ...> requires T to be noexcept destructible.");
-	static_assert(is_powerof2( C ), "queue<T, C, ...> requires C to be a power of 2.");
-
-	using cell_t = detail::cell<T, SAFE_PUSH || SAFE_POP>;
+	static_assert(std::is_nothrow_destructible_v<T>, "queue<T, C, ...> requires T to be nothrow destructible.");
+	static_assert(is_powerof2( Count ), "queue<T, C, ...> requires Count to be a power of 2.");
 
 public:
-	explicit queue() noexcept(!WAITABLE_PUSH && !WAITABLE_POP) {}
-
 	queue( const queue& ) = delete;
 	queue& operator = ( const queue& ) = delete;
 
-	/*
-	НЕ блокирует поток.
-	@return success - если объект помещён в очередь, rejected - если очередь заполнена.
-	@exception перенаправляет исключения, выбрасываемые конструктором объекта.
-	*/
+
 	template<typename... Args>
 	[[nodiscard]]
-	return_code try_push( Args&&... args ) noexcept(std::is_nothrow_constructible_v<T, Args&&...>)
+	bool try_push( Args&&... args ) noexcept
 	{
-		push_helper helper( this );
-		return helper.emplace( std::forward<Args>( args )... );
+		static_assert(std::is_nothrow_constructible_v<T, Args&&...>,
+			"queue<T, C, ...>::try_push requires T to be nothrow constructible.");
+
+		un index;
+		if (push_vacancies.try_acquire( &index ))
+		{
+			{
+				auto helper = buffer.get_push_helper( index );
+				new (helper.ptr()) T( args... );
+			}
+			TESTONLY_POP_VACANCIES_ADD;
+			return true;
+		}
+		return false;
 	}
 
-	/*
-	Блокирует поток, если очередь заполнена.
-	@return success - если объект добавлен в очередь, rejected - если очередь готовится к разрушению.
-	@exception перенаправляет исключения, выбрасываемые конструктором объекта.
-	*/
 	template<typename... Args>
 	[[nodiscard]]
-	return_code try_push_wait( Args&&... args ) noexcept(std::is_nothrow_constructible_v<T, Args&&...>)
+	bool try_push_spin( Args&&... args ) noexcept
 	{
-		push_helper helper( this, wait_tag );
-		return helper.emplace( std::forward<Args>( args )... );
+		static_assert(std::is_nothrow_constructible_v<T, Args&&...>,
+			"queue<T, C, ...>::try_push requires T to be nothrow constructible.");
+
+		un index;
+		if (push_vacancies.try_acquire_spin( &index ))
+		{
+			{
+				auto helper = buffer.get_push_helper( index );
+				new (helper.ptr()) T( args... );
+			}
+			TESTONLY_POP_VACANCIES_ADD;
+			return true;
+		}
+		return false;
 	}
 
-	/*
-	НЕ блокирует поток.
-	@exception `TODO(rejected)` - если очередь заполнена.
-	@exception перенаправляет исключения, выбрасываемые конструктором объекта.
-	*/
-	template<typename... Args>
-	void push( Args&&... args )
-	{
-		push_helper helper( this );
-		helper.emplace( std::forward<Args>( args )... );
-		if (helper.rcode != return_code::success)
-			throw helper.rcode; // TODO
-	}
 
-	/*
-	Блокирует поток, если очередь заполнена.
-	@exception `TODO(rejected)` - если очередь готовится к разрушению.
-	@exception перенаправляет исключения, выбрасываемые конструктором объекта.
-	*/
-	template<typename... Args>
-	void push_wait( Args&&... args )
-	{
-		push_helper helper( this, wait_tag );
-		helper.emplace( std::forward<Args>( args )... );
-		if (helper.rcode != return_code::success)
-			throw helper.rcode; // TODO
-	}
-
-	/*
-	НЕ блокирует поток. Используется оператор перемещения.
-	@return success - если в t перемещён объект из очереди, rejected - если очередь пуста.
-	@exception перенаправляет исключения, выбрасываемые оператором перемещения объекта.
-	*/
 	[[nodiscard]]
-	return_code try_pop( T& t ) noexcept(std::is_nothrow_move_assignable_v<T>)
+	bool try_pop( T* const pointer ) noexcept
 	{
-		pop_helper helper( this );
-		if (helper.rcode == return_code::success)
-			t = helper.ref();
-		return helper.rcode;
+		static_assert(std::is_nothrow_move_assignable_v<T>,
+			"queue<T, C, ...>::try_pop requires T to be nothrow move assignable.");
+
+		un index;
+		if (pop_vacancies.try_acquire( &index ))
+		{
+			{
+				auto helper = buffer.get_pop_helper( index );
+				*pointer = std::move( *helper.ptr() );
+			}
+			TESTONLY_PUSH_VACANCIES_ADD;
+			return true;
+		}
+		return false;
 	}
 
-	/*
-	НЕ блокирует поток. Используется конструктор перемещения.
-	@return success - если в `*optional` перемещён объект из очереди, rejected - если очередь пуста.
-	@exception перенаправляет исключения, выбрасываемые конструктором перемещения объекта.
-	*/
 	[[nodiscard]]
-	return_code try_pop( std::optional<T>& optional ) noexcept(std::is_nothrow_move_constructible_v<T>)
+	bool try_pop_spin( T* const pointer ) noexcept
 	{
-		pop_helper helper( this );
-		if (helper.rcode == return_code::success)
-			optional.emplace( helper.ref() );
-		return helper.rcode;
+		static_assert(std::is_nothrow_move_assignable_v<T>,
+			"queue<T, C, ...>::try_pop _spin requires T to be nothrow move assignable.");
+
+		un index;
+		if (pop_vacancies.try_acquire_spin( &index ))
+		{
+			{
+				auto helper = buffer.get_pop_helper( index );
+				*pointer = std::move( *helper.ptr() );
+			}
+			TESTONLY_PUSH_VACANCIES_ADD;
+			return true;
+		}
+		return false;
 	}
 
-	/*
-	Блокирует поток, если очередь пуста. Используется оператор перемещения.
-	@return success - если в t перемещён объект из очереди, rejected - если очередь готовится к разрушению.
-	@exception перенаправляет исключения, выбрасываемые оператором перемещения объекта.
-	*/
-	[[nodiscard]]
-	return_code try_pop_wait( T& t ) noexcept(std::is_nothrow_move_assignable_v<T>)
-	{
-		pop_helper helper( this, wait_tag );
-		if (helper.rcode == return_code::success)
-			t = helper.ref();
-		return helper.rcode;
-	}
 
-	/*
-	Блокирует поток, если очередь пуста. Используется конструктор перемещения.
-	@return success - если в `*optional` перемещён объект из очереди, rejected - если очередь готовится к разрушению.
-	@exception перенаправляет исключения, выбрасываемые конструктором перемещения объекта.
-	*/
-	[[nodiscard]]
-	return_code try_pop_wait( std::optional<T>& optional ) noexcept(std::is_nothrow_move_constructible_v<T>)
-	{
-		pop_helper helper( this, wait_tag );
-		if (helper.rcode == return_code::success)
-			optional.emplace( helper.ref() );
-		return helper.rcode;
-	}
-
-	/*
-	НЕ блокирует поток. Используется конструктор перемещения.
-	@return success - перемещённый объект из очереди.
-	@exception `TODO(rejected)` - если очередь пуста.
-	@exception перенаправляет исключения, выбрасываемые конструктором перемещения объекта.
-	*/
-	T pop()
-	{
-		pop_helper helper( this );
-		if (helper.rcode != return_code::success)
-			throw helper.rcode; // TODO
-		return helper.ref();
-	}
-
-	/*
-	Блокирует поток, если очередь пуста. Используется конструктор перемещения.
-	@return success - перемещённый объект из очереди.
-	@exception `TODO(rejected)` - если очередь готовится к разрушению.
-	@exception перенаправляет исключения, выбрасываемые конструктором перемещения объекта.
-	*/
-	T pop_wait()
-	{
-		pop_helper helper( this, wait_tag );
-		if (helper.rcode != return_code::success)
-			throw helper.rcode; // TODO
-		return helper.ref();
-	}
-
-	/*
-	НЕ блокирует поток.
-	Объект не будет разрушен и место в очереди не освободится, 
-	пока не выполнится callback функция - не делайте её долгой.
-	@return success - если успешно выполнилась callback функция, rejected - если очередь пуста.
-	@exception перенаправляет исключения, выбрасываемые конструктором перемещения объекта.
-	*/
 	template<typename Action>
 	[[nodiscard]]
-	return_code try_pop_directly( Action callback ) noexcept(noexcept(callback( std::declval<T>() )))
+	bool try_pop_directly( Action callback ) noexcept
 	{
-		pop_helper helper( this );
-		if (helper.rcode == return_code::success)
-			callback( helper.ref() );
-		return helper.rcode;
+		static_assert(std::is_nothrow_invocable_v<Action, T*>,
+			"queue<T, C, ...>::try_pop_directly requires callback to be nothrow invocable.");
+
+		un index;
+		if (pop_vacancies.try_acquire( &index ))
+		{
+			{
+				auto helper = buffer.get_pop_helper( index );
+				std::invoke( callback, helper.ptr() );
+			}
+			TESTONLY_PUSH_VACANCIES_ADD;
+			return true;
+		}
+		return false;
 	}
 
-	/*
-	Блокирует поток, если очередь пуста.
-	Объект не будет разрушен и место в очереди не освободится, 
-	пока не выполнится callback функция - не делайте её долгой.
-	@return success - если успешно выполнилась callback функция,
-	rejected - если очередь готовится к разрушению.
-	@exception перенаправляет исключения, выбрасываемые конструктором перемещения объекта.
-	*/
 	template<typename Action>
 	[[nodiscard]]
-	return_code try_pop_directly_wait( Action callback ) noexcept(noexcept(callback( std::declval<T>() )))
+	bool try_pop_directly_spin( Action callback ) noexcept
 	{
-		pop_helper helper( this, wait_tag );
-		if (helper.rcode == return_code::success)
-			callback( helper.ref() );
-		return helper.rcode;
+		static_assert(std::is_nothrow_invocable_v<Action, T*>,
+			"queue<T, C, ...>::try_pop_directly requires callback to be nothrow invocable.");
+
+		un index;
+		if (pop_vacancies.try_acquire_spin( &index ))
+		{
+			{
+				auto helper = buffer.get_pop_helper( index );
+				std::invoke( callback, helper.ptr() );
+			}
+			TESTONLY_PUSH_VACANCIES_ADD;
+			return true;
+		}
+		return false;
 	}
 
-	/*
-	НЕ блокирует поток.
-	Объект не будет разрушен и место в очереди не освободится, 
-	пока не выполнится callback функция - не делайте её долгой.
-	@exception `TODO(rejected)` - если очередь пуста.
-	@exception перенаправляет исключения из callback функции конструктором перемещения объекта.
-	*/
-	template<typename Action>
-	void pop_directly( Action callback )
-	{
-		pop_helper helper( this );
-		if (helper.rcode != return_code::success)
-			throw helper.rcode; // TODO
-		callback( helper.ref() );
-	}
-
-	/*
-	Блокирует поток, если очередь пуста.
-	Объект не будет разрушен и место в очереди не освободится, 
-	пока не выполнится callback функция - не делайте её долгой.
-	@exception `TODO(rejected)` - если очередь готовится к разрушению.
-	@exception перенаправляет исключения, выбрасываемые конструктором перемещения объекта.
-	*/
-	template<typename Action>
-	void pop_directly_wait( Action callback )
-	{
-		pop_helper helper( this, wait_tag );
-		if (helper.rcode != return_code::success)
-			throw helper.rcode; // TODO
-		callback( helper.ref() );
-	}
 
 	/*
 	Подготовка к разрушению очереди. После вызова, ожидающие `wait` функции вернут 
@@ -327,14 +233,13 @@ public:
 		}
 	}
 
-private:
-	alignas(64) cell_t buffer[C]{};
 public:
-	vacancies<SAFE_PUSH, WAITABLE_PUSH> pusher{ C };
-	vacancies<SAFE_POP, WAITABLE_POP> popper{ 0 };
+	vacancies<F1>               push_vacancies{ C };
+	vacancies<F2>               pop_vacancies{ 0 };
+	cell_buffer<T, Count, true> buffer{};
 };
 
 
 } // namespace kwt::concurrent
 
-#endif // !KWTOOLS_CONCURRENT_QUEUE_HPP
+#endif // !KWTOOLS_CONCURRENT_CELL_QUEUE_HPP
